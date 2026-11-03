@@ -1,0 +1,251 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>トレック｜毎朝の報告フォーム</title>
+<style>
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  padding: 20px;
+  background: #f2f4f7;
+  color: #222;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+.container {
+  max-width: 650px;
+  margin: auto;
+  background: white;
+  padding: 24px;
+  border-radius: 18px;
+}
+h1 { font-size: 23px; margin-top: 0; }
+h2 {
+  font-size: 17px;
+  margin-top: 28px;
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 8px;
+}
+label {
+  display: block;
+  font-weight: 600;
+  margin: 14px 0 7px;
+}
+input, textarea, select {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #ccc;
+  border-radius: 9px;
+  font-size: 16px;
+  background: white;
+}
+textarea { min-height: 85px; resize: vertical; }
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.options label {
+  margin: 0;
+  font-weight: normal;
+}
+.options input { width: auto; }
+.choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 12px;
+  background: #f2f4f7;
+  border-radius: 9px;
+}
+button {
+  width: 100%;
+  padding: 15px;
+  margin-top: 16px;
+  border: none;
+  border-radius: 10px;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+}
+.primary { background: #1769e0; color: white; }
+.secondary { background: #e9edf3; color: #222; }
+#output {
+  min-height: 240px;
+  margin-top: 16px;
+  background: #f5f7fa;
+}
+.note {
+  font-size: 12px;
+  color: #666;
+  margin-top: 8px;
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>毎朝の報告フォーム</h1>
+<p>トレックに今日の計画を作ってもらうための入力フォーム。</p>
+
+<h2>① 基本情報</h2>
+
+<label>日付</label>
+<input type="date" id="date">
+
+<div class="grid">
+  <div>
+    <label>朝の体重（kg）</label>
+    <input type="number" id="weight" step="0.1" value="72">
+  </div>
+  <div>
+    <label>腹囲（cm）</label>
+    <input type="number" id="waist" step="0.1" placeholder="未測定なら空欄">
+  </div>
+</div>
+
+<h2>② 睡眠・体調</h2>
+
+<label>昨夜の睡眠</label>
+<div class="options" id="sleep">
+  <label class="choice"><input type="radio" name="sleep" value="良好" checked>良好</label>
+  <label class="choice"><input type="radio" name="sleep" value="普通">普通</label>
+  <label class="choice"><input type="radio" name="sleep" value="悪い">悪い</label>
+</div>
+
+<label>睡眠時間</label>
+<input type="number" id="hours" value="7" step="0.5">
+
+<label>現在の体調</label>
+<div class="options">
+  <label class="choice"><input type="radio" name="condition" value="良好" checked>良好</label>
+  <label class="choice"><input type="radio" name="condition" value="普通">普通</label>
+  <label class="choice"><input type="radio" name="condition" value="悪い">悪い</label>
+</div>
+
+<label>症状・痛み</label>
+<input id="symptoms" placeholder="例：頭痛、喉、腰、膝。なければ「なし」" value="なし">
+
+<h2>③ 昨日の振り返り</h2>
+
+<label>昨日の運動</label>
+<select id="exercise">
+  <option>休養</option>
+  <option>筋トレ</option>
+  <option>ボクシング・散歩</option>
+  <option>筋トレ＋有酸素</option>
+</select>
+
+<label>昨日の飲酒</label>
+<div class="options">
+  <label class="choice"><input type="radio" name="alcohol" value="飲まなかった" checked>飲まなかった</label>
+  <label class="choice"><input type="radio" name="alcohol" value="飲んだ">飲んだ</label>
+</div>
+
+<label>現在の飲酒欲求</label>
+<div class="options">
+  <label class="choice"><input type="radio" name="craving" value="なし" checked>なし</label>
+  <label class="choice"><input type="radio" name="craving" value="少し">少し</label>
+  <label class="choice"><input type="radio" name="craving" value="強い">強い</label>
+</div>
+
+<h2>④ 今日の予定</h2>
+
+<label>今日の予定・仕事・外出</label>
+<textarea id="plans" placeholder="例：休み。夕方に妻を迎えに行く。"></textarea>
+
+<div class="grid">
+  <div>
+    <label>起床時刻</label>
+    <input type="time" id="wake" value="07:00">
+  </div>
+  <div>
+    <label>就寝希望時刻</label>
+    <input type="time" id="bed" value="23:00">
+  </div>
+</div>
+
+<label>その他・希望・気になること</label>
+<textarea id="notes" placeholder="例：今日は筋トレしたい。昼は外食予定。"></textarea>
+
+<button class="primary" onclick="generate()">報告文を作成する</button>
+
+<h2>⑤ 生成された報告文</h2>
+<textarea id="output" placeholder="ここに報告文が生成される"></textarea>
+
+<button class="primary" onclick="copyReport()">報告文をコピーする</button>
+<p class="note">コピー後、このチャットに貼り付けて送信する。</p>
+
+</div>
+
+<script>
+function getRadio(name) {
+  return document.querySelector(
+    'input[name="' + name + '"]:checked'
+  )?.value || "未入力";
+}
+
+function generate() {
+  const date = document.getElementById("date").value;
+  const weight = document.getElementById("weight").value;
+  const waist = document.getElementById("waist").value;
+  const sleep = getRadio("sleep");
+  const hours = document.getElementById("hours").value;
+  const condition = getRadio("condition");
+  const symptoms = document.getElementById("symptoms").value;
+  const exercise = document.getElementById("exercise").value;
+  const alcohol = getRadio("alcohol");
+  const craving = getRadio("craving");
+  const plans = document.getElementById("plans").value;
+  const wake = document.getElementById("wake").value;
+  const bed = document.getElementById("bed").value;
+  const notes = document.getElementById("notes").value;
+
+  const report = `【朝の報告・今日の計画作成依頼】
+日付：${date}
+体重：${weight || "未測定"}kg
+腹囲：${waist ? waist + "cm" : "未測定"}
+昨夜の睡眠：${sleep}・${hours || "未入力"}時間
+現在の体調：${condition}
+症状・痛み：${symptoms || "未記入"}
+昨日の運動：${exercise}
+昨日の飲酒：${alcohol}
+現在の飲酒欲求：${craving}
+今日の予定・外出・仕事：${plans || "特になし"}
+起床時刻：${wake}
+就寝希望時刻：${bed}
+その他・希望：${notes || "特になし"}
+
+今日の予定を考えて、大まかなタイムテーブルを作って。
+食事2,200kcal・タンパク質140gを初期目安とし、筋肉維持、減量、禁酒、体調を考慮して提案して。`;
+
+  document.getElementById("output").value = report;
+}
+
+async function copyReport() {
+  const output = document.getElementById("output");
+  if (!output.value) generate();
+
+  try {
+    await navigator.clipboard.writeText(output.value);
+    alert("報告文をコピーした！");
+  } catch (e) {
+    output.select();
+    document.execCommand("copy");
+    alert("報告文をコピーした！");
+  }
+}
+
+// 今日の日付を初期設定
+document.getElementById("date").value =
+  new Date().toLocaleDateString("sv-SE");
+</script>
+</body>
+</html>
