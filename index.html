@@ -1,0 +1,1087 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>カレー受付・注文</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Firebase SDK (Compat版 CDN) -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  <style>
+    * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+    html, body { height: 100dvh; overflow: hidden; touch-action: manipulation; }
+    .smooth-scroll { scroll-behavior: smooth; }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    .sheet-backdrop { transition: opacity 0.25s ease-out; }
+    .sheet-content { transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1); transform: translateY(100%); }
+    .sheet-open .sheet-content { transform: translateY(0); }
+    @keyframes toast-anim {
+      0% { opacity: 0; transform: translate(-50%, -10px); }
+      15% { opacity: 1; transform: translate(-50%, 0); }
+      85% { opacity: 1; transform: translate(-50%, 0); }
+      100% { opacity: 0; transform: translate(-50%, -10px); }
+    }
+    .animate-toast { animation: toast-anim 1.2s forwards ease-out; }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 flex flex-col font-sans select-none pb-[env(safe-area-inset-bottom)]">
+
+  <!-- ヘッダー -->
+  <header class="bg-amber-600 text-white flex-shrink-0 shadow z-20">
+    <div class="px-2.5 h-9 flex items-center justify-between">
+      <div class="font-bold text-sm tracking-wide flex items-center gap-1.5">
+        <span>カレー受付</span>
+        <span class="w-2 h-2 rounded-full bg-emerald-400" id="db-status-dot" title="同期中"></span>
+      </div>
+      <button onclick="openConfigModal()" class="text-[11px] bg-amber-700 active:bg-amber-800 px-2.5 py-0.5 rounded-full font-mono flex items-center gap-1">
+        本日 <span id="hdr-served" class="font-bold">0</span>/<span id="hdr-total">200</span>
+        <span class="text-[10px]">⚙️</span>
+      </button>
+    </div>
+    <div class="grid grid-cols-2 text-center text-xs font-bold bg-amber-700 h-[26px] items-center">
+      <button id="nav-btn-entry" onclick="switchMainView('entry')" class="h-full border-b-2 border-white text-white flex items-center justify-center">
+        受付・注文
+      </button>
+      <button id="nav-btn-list" onclick="switchMainView('list')" class="h-full border-b-2 border-transparent text-amber-200 flex items-center justify-center">
+        一覧 (<span id="unhandled-cnt">0</span>)
+      </button>
+    </div>
+  </header>
+
+  <!-- 1. 受付・注文入力 -->
+  <main id="main-entry-container" class="flex-1 flex flex-col overflow-hidden">
+    <div class="bg-white p-2 border-b border-slate-200 shadow-xs flex-shrink-0 space-y-1.5">
+      <div class="flex items-center justify-between gap-1.5">
+        <div class="grid grid-cols-2 bg-slate-100 p-0.5 rounded-lg text-xs font-bold w-24 flex-shrink-0">
+          <button type="button" onclick="handleUserClickDishCount(1)" id="btn-count-1" class="py-1 rounded bg-amber-600 text-white shadow-xs text-center transition">1食</button>
+          <button type="button" onclick="handleUserClickDishCount(2)" id="btn-count-2" class="py-1 rounded text-slate-600 text-center transition">2食</button>
+        </div>
+        <div class="text-right flex-shrink-0 pl-1">
+          <span class="text-xs text-slate-400 font-bold block leading-none">合計</span>
+          <span class="text-lg font-black font-mono text-amber-700 leading-tight">¥<span id="disp-total-price">0</span></span>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label class="block text-[10px] font-bold text-slate-600 mb-0.5">お名前（任意）</label>
+          <input type="text" id="inp-name" placeholder="例: 山田" class="w-full text-sm font-bold py-1.5 px-2.5 border-2 border-slate-300 rounded-lg bg-white text-slate-900 focus:outline-none focus:border-amber-600 shadow-inner" />
+        </div>
+        <div>
+          <label class="block text-[10px] font-bold text-slate-600 mb-0.5">電話番号（任意）</label>
+          <input type="tel" id="inp-phone" placeholder="例: 0901234..." class="w-full text-sm font-mono font-bold py-1.5 px-2.5 border-2 border-slate-300 rounded-lg bg-white text-slate-900 focus:outline-none focus:border-amber-600 shadow-inner" />
+        </div>
+      </div>
+    </div>
+
+    <!-- 注文パネルスクロール -->
+    <div id="scroll-order-body" class="flex-1 overflow-y-auto smooth-scroll p-1.5 space-y-2">
+      <!-- 1食目 -->
+      <div id="panel-dish-0" class="bg-white p-2.5 rounded-xl border border-slate-200 shadow-xs space-y-2">
+        <div class="flex justify-between items-center pb-1 border-b border-slate-100">
+          <span class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-amber-600"></span> 1食目
+            <span id="status-dish-0" class="text-[10px] text-rose-500 font-normal">未選択</span>
+          </span>
+          <div class="grid grid-cols-2 bg-slate-100 p-0.5 rounded-lg text-[10px] font-bold w-28">
+            <button type="button" onclick="setDishType(0, '店内')" id="btn-type-0-dinein" class="py-0.5 rounded bg-amber-600 text-white shadow-xs text-center transition">店内</button>
+            <button type="button" onclick="setDishType(0, '持ち帰り')" id="btn-type-0-takeout" class="py-0.5 rounded text-slate-600 text-center transition">持帰</button>
+          </div>
+        </div>
+
+        <div>
+          <span class="text-[10px] font-bold text-amber-800 block mb-0.5">カレー *</span>
+          <div class="grid grid-cols-3 gap-1.5 font-bold text-xs">
+            <button type="button" onclick="setDishProp(0, 'curry', 'チキン')" id="btn-curry-0-chicken" class="h-9 rounded-lg border border-amber-200 bg-white text-slate-700 flex justify-between items-center px-2"><span>チキン</span><span class="text-[9px] font-normal opacity-75">¥1,500</span></button>
+            <button type="button" onclick="setDishProp(0, 'curry', 'ポーク')" id="btn-curry-0-pork" class="h-9 rounded-lg border border-amber-200 bg-white text-slate-700 flex justify-between items-center px-2"><span>ポーク</span><span class="text-[9px] font-normal opacity-75">¥1,500</span></button>
+            <button type="button" onclick="setDishProp(0, 'curry', '限定')" id="btn-curry-0-special" class="h-9 rounded-lg border border-amber-200 bg-white text-slate-700 flex justify-between items-center px-2"><span class="lbl-special-title">限定</span><span class="text-[9px] font-mono opacity-75 lbl-special-sub">残10</span></button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-12 gap-1.5">
+          <div class="col-span-5">
+            <span class="text-[10px] font-bold text-blue-800 block mb-0.5">量 *</span>
+            <div class="grid grid-cols-2 gap-1 font-bold text-xs">
+              <button type="button" onclick="setDishProp(0, 'rice', 'ふつう')" id="btn-rice-0-normal" class="h-8 rounded-lg border border-blue-200 bg-white text-slate-700">ふつう</button>
+              <button type="button" onclick="setDishProp(0, 'rice', '大盛')" id="btn-rice-0-large" class="h-8 rounded-lg border border-blue-200 bg-white text-slate-700 text-[11px]">大盛<span class="text-[8px] font-normal opacity-75">+150</span></button>
+            </div>
+          </div>
+          <div class="col-span-7">
+            <span class="text-[10px] font-bold text-rose-800 block mb-0.5">辛さ *</span>
+            <div class="grid grid-cols-3 gap-1 font-bold text-xs">
+              <button type="button" onclick="setDishProp(0, 'spicy', 'ふつう')" id="btn-spicy-0-normal" class="h-8 rounded-lg border border-rose-200 bg-white text-slate-700">ふつう</button>
+              <button type="button" onclick="setDishProp(0, 'spicy', '辛口')" id="btn-spicy-0-hot" class="h-8 rounded-lg border border-rose-200 bg-white text-slate-700">辛口</button>
+              <button type="button" onclick="setDishProp(0, 'spicy', '大辛')" id="btn-spicy-0-vhot" class="h-8 rounded-lg border border-rose-200 bg-white text-slate-700">大辛</button>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <span class="text-[10px] font-bold text-emerald-800 block mb-0.5">具材トッピング *</span>
+          <div class="flex flex-wrap gap-1 text-xs items-center" id="toppings-container-0"></div>
+        </div>
+
+        <div>
+          <span class="text-[10px] font-bold text-purple-800 block mb-0.5">ドリンク・他 *</span>
+          <div class="flex items-center justify-between gap-1">
+            <div class="flex flex-wrap gap-1 text-xs flex-1 items-center" id="drinks-container-0"></div>
+            <button type="button" id="btn-goto-2nd" onclick="scrollToSecondDish()" class="hidden h-7 px-2.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-[11px] rounded-lg shadow-xs flex items-center gap-0.5 flex-shrink-0 active:scale-95 transition">
+              <span>2食目へ</span><span>↓</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2食目 -->
+      <div id="panel-dish-1" class="hidden bg-white p-2.5 rounded-xl border-2 border-amber-400 shadow-xs space-y-2">
+        <div class="flex justify-between items-center pb-1 border-b border-slate-100">
+          <span class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-amber-600"></span> 2食目
+            <span id="status-dish-1" class="text-[10px] text-rose-500 font-normal">未選択</span>
+          </span>
+          <div class="grid grid-cols-2 bg-slate-100 p-0.5 rounded-lg text-[10px] font-bold w-28">
+            <button type="button" onclick="setDishType(1, '店内')" id="btn-type-1-dinein" class="py-0.5 rounded bg-amber-600 text-white shadow-xs text-center transition">店内</button>
+            <button type="button" onclick="setDishType(1, '持ち帰り')" id="btn-type-1-takeout" class="py-0.5 rounded text-slate-600 text-center transition">持帰</button>
+          </div>
+        </div>
+
+        <div>
+          <span class="text-[10px] font-bold text-amber-800 block mb-0.5">カレー *</span>
+          <div class="grid grid-cols-3 gap-1.5 font-bold text-xs">
+            <button type="button" onclick="setDishProp(1, 'curry', 'チキン')" id="btn-curry-1-chicken" class="h-9 rounded-lg border border-amber-200 bg-white text-slate-700 flex justify-between items-center px-2"><span>チキン</span><span class="text-[9px] font-normal opacity-75">¥1,500</span></button>
+            <button type="button" onclick="setDishProp(1, 'curry', 'ポーク')" id="btn-curry-1-pork" class="h-9 rounded-lg border border-amber-200 bg-white text-slate-700 flex justify-between items-center px-2"><span>ポーク</span><span class="text-[9px] font-normal opacity-75">¥1,500</span></button>
+            <button type="button" onclick="setDishProp(1, 'curry', '限定')" id="btn-curry-1-special" class="h-9 rounded-lg border border-amber-200 bg-white text-slate-700 flex justify-between items-center px-2"><span class="lbl-special-title">限定</span><span class="text-[9px] font-mono opacity-75 lbl-special-sub">残10</span></button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-12 gap-1.5">
+          <div class="col-span-5">
+            <span class="text-[10px] font-bold text-blue-800 block mb-0.5">量 *</span>
+            <div class="grid grid-cols-2 gap-1 font-bold text-xs">
+              <button type="button" onclick="setDishProp(1, 'rice', 'ふつう')" id="btn-rice-1-normal" class="h-8 rounded-lg border border-blue-200 bg-white text-slate-700">ふつう</button>
+              <button type="button" onclick="setDishProp(1, 'rice', '大盛')" id="btn-rice-1-large" class="h-8 rounded-lg border border-blue-200 bg-white text-slate-700 text-[11px]">大盛<span class="text-[8px] font-normal opacity-75">+150</span></button>
+            </div>
+          </div>
+          <div class="col-span-7">
+            <span class="text-[10px] font-bold text-rose-800 block mb-0.5">辛さ *</span>
+            <div class="grid grid-cols-3 gap-1 font-bold text-xs">
+              <button type="button" onclick="setDishProp(1, 'spicy', 'ふつう')" id="btn-spicy-1-normal" class="h-8 rounded-lg border border-rose-200 bg-white text-slate-700">ふつう</button>
+              <button type="button" onclick="setDishProp(1, 'spicy', '辛口')" id="btn-spicy-1-hot" class="h-8 rounded-lg border border-rose-200 bg-white text-slate-700">辛口</button>
+              <button type="button" onclick="setDishProp(1, 'spicy', '大辛')" id="btn-spicy-1-vhot" class="h-8 rounded-lg border border-rose-200 bg-white text-slate-700">大辛</button>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <span class="text-[10px] font-bold text-emerald-800 block mb-0.5">具材トッピング *</span>
+          <div class="flex flex-wrap gap-1 text-xs items-center" id="toppings-container-1"></div>
+        </div>
+
+        <div>
+          <span class="text-[10px] font-bold text-purple-800 block mb-0.5">ドリンク・他 *</span>
+          <div class="flex flex-wrap gap-1 text-xs items-center" id="drinks-container-1"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 手動オープンボタン -->
+    <div class="p-2 bg-white border-t border-slate-200 shadow-md flex-shrink-0">
+      <button type="button" id="btn-manual-open-sheet" onclick="tryOpenBottomSheet()" class="w-full h-11 bg-slate-200 text-slate-400 font-bold text-sm rounded-xl flex items-center justify-between px-4 cursor-not-allowed">
+        <span class="text-base tracking-wide">時間帯選択</span>
+        <span class="text-xs font-mono bg-slate-300 text-slate-500 px-2 py-1 rounded-lg" id="btn-summary-badge">未選択</span>
+      </button>
+    </div>
+  </main>
+
+  <!-- 2. 一覧画面 -->
+  <section id="view-list" class="hidden flex-1 flex flex-col overflow-hidden p-2">
+    <div class="grid grid-cols-2 bg-slate-200 p-0.5 rounded-lg mb-1 flex-shrink-0 text-xs font-bold">
+      <button id="tab-lst-dinein" onclick="switchListSubtab('店内')" class="py-1 rounded bg-white text-slate-800 shadow-xs">
+        店内 (<span id="badge-lst-dinein">0</span>)
+      </button>
+      <button id="tab-lst-takeout" onclick="switchListSubtab('持ち帰り')" class="py-1 rounded text-slate-600">
+        持ち帰り (<span id="badge-lst-takeout">0</span>)
+      </button>
+    </div>
+
+    <div id="banner-all-done" class="hidden bg-rose-50 border border-rose-300 p-1 rounded text-center mb-1 flex-shrink-0">
+      <div class="text-[10px] font-bold text-rose-700 mb-0.5">全員の対応が完了しました</div>
+      <button onclick="confirmResetAll()" class="w-full py-1 bg-rose-600 text-white rounded font-bold text-xs shadow">
+        本日の受付データを全件削除
+      </button>
+    </div>
+
+    <div class="flex gap-1 overflow-x-auto pb-0.5 mb-1 text-[10px] flex-shrink-0 no-scrollbar" id="filter-bar"></div>
+    <div id="lst-orders-container" class="flex-1 overflow-y-auto space-y-1.5 pr-0.5"></div>
+  </section>
+
+  <!-- ボトムシート -->
+  <div id="sheet-wrapper" class="fixed inset-0 z-50 pointer-events-none flex flex-col justify-end">
+    <div id="sheet-backdrop" onclick="closeBottomSheet()" class="sheet-backdrop absolute inset-0 bg-black/60 opacity-0 pointer-events-none"></div>
+    <div id="sheet-panel" class="sheet-content relative bg-white w-full rounded-t-3xl p-4 shadow-2xl pointer-events-auto flex flex-col gap-3 max-h-[85dvh]">
+      <div class="w-10 h-1 bg-slate-300 rounded-full mx-auto flex-shrink-0"></div>
+      <div class="flex justify-between items-center border-b border-slate-100 pb-2">
+        <div>
+          <div class="text-xs text-slate-400 font-bold">入力完了</div>
+          <div class="text-base font-bold text-slate-800" id="sheet-target-info">1食 / ¥1,500</div>
+        </div>
+        <button onclick="closeBottomSheet()" class="text-slate-400 hover:text-slate-600 text-sm font-bold bg-slate-100 px-3 py-1 rounded-full">閉じる</button>
+      </div>
+      <div class="text-xs font-bold text-slate-600">時間帯をタップして確定</div>
+      <div class="grid grid-cols-2 gap-2" id="grid-slot-buttons"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="hidden fixed top-10 left-1/2 -translate-x-1/2 z-50 bg-slate-900/90 text-white px-4 py-2 rounded-full shadow-2xl flex items-center gap-1.5 pointer-events-none">
+    <span class="text-emerald-400 font-bold text-xs">✓</span>
+    <span id="toast-msg" class="text-xs font-bold tracking-wide">001番 確定</span>
+  </div>
+
+  <!-- 設定モーダル -->
+  <div id="modal-config" class="hidden fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-3">
+    <div class="bg-white w-full max-w-sm rounded-xl p-3 shadow-2xl flex flex-col max-h-[90dvh]">
+      <div class="text-xs font-bold text-slate-800 text-center mb-1">設定</div>
+      <div class="bg-amber-50 p-2 rounded-lg border border-amber-200 mb-2 space-y-1">
+        <div class="text-[11px] font-bold text-amber-800">限定メニュー</div>
+        <div class="grid grid-cols-4 gap-1">
+          <input type="text" id="cfg-special-name" value="限定カレー" class="col-span-2 text-xs px-2 py-1 border rounded" />
+          <input type="number" id="cfg-special-price" value="1600" min="0" placeholder="価格" class="text-xs px-1 py-1 border rounded text-center font-bold" />
+          <input type="number" id="cfg-special-limit" value="10" min="0" placeholder="食数" class="text-xs px-1 py-1 border rounded text-center font-bold" />
+        </div>
+      </div>
+      <div class="flex-1 overflow-y-auto border border-slate-200 rounded-lg mb-2">
+        <table class="w-full text-xs text-center border-collapse">
+          <thead class="bg-slate-50 font-bold text-slate-600 sticky top-0 border-b border-slate-200">
+            <tr>
+              <th class="py-1 px-1 text-left">枠</th>
+              <th class="py-1 px-1 text-amber-700">店内</th>
+              <th class="py-1 px-1 text-slate-700">持帰</th>
+            </tr>
+          </thead>
+          <tbody id="cfg-tbody" class="divide-y divide-slate-100 font-mono"></tbody>
+        </table>
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        <button onclick="closeConfigModal()" class="py-1.5 rounded font-bold text-xs bg-slate-100 text-slate-600">閉じる</button>
+        <button onclick="saveConfigModal()" class="py-1.5 rounded font-bold text-xs bg-amber-600 text-white shadow">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 電話発信モーダル -->
+  <div id="modal-call" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-xs rounded-xl p-3 shadow-2xl text-center space-y-3">
+      <div class="text-xs font-bold text-slate-800">発信の確認</div>
+      <div class="py-1.5 bg-slate-50 rounded border border-slate-100">
+        <div class="text-[10px] text-slate-500 font-bold" id="call-lbl-num">001番</div>
+        <div class="text-sm font-mono font-bold text-slate-800" id="call-lbl-phone">090-0000-0000</div>
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        <button onclick="closeCallModal()" class="py-1.5 rounded font-bold text-xs bg-slate-100 text-slate-600">戻る</button>
+        <a id="call-link-act" href="#" class="py-1.5 rounded font-bold text-xs text-white bg-emerald-600 flex items-center justify-center">発信する</a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ===== Firebase 初期化 =====
+    const firebaseConfig = {
+      apiKey: "AIzaSyC1C4LIZpiiEA6PohPTC-XsI4ayfWgzBpo",
+      authDomain: "curry-ticket-system.firebaseapp.com",
+      projectId: "curry-ticket-system",
+      storageBucket: "curry-ticket-system.firebasestorage.app",
+      messagingSenderId: "295266310086",
+      appId: "1:295266310086:web:a86117b637fd7fb4a0c4c7",
+      measurementId: "G-QY5GDDWG5Y"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    const TIME_SLOTS = ["11:00", "11:30", "12:00", "12:30", "13:00", "13:30"];
+    const PRICES = {
+      chicken: 1500,
+      pork: 1500,
+      riceLarge: 150,
+      toppings: { "キーマ": 350, "アチャール": 350, "うずら": 150, "パクチー": 200, "豆カレー": 350, "サラダ": 200, "ピクルス": 100 },
+      drinks: { "ビール": 450, "チャイ": 350 }
+    };
+
+    let specialConfig = { name: "限定", price: 1600, limit: 10 };
+    let slotLimits = {
+      "11:00": { dinein: 15, takeout: 10 },
+      "11:30": { dinein: 20, takeout: 15 },
+      "12:00": { dinein: 30, takeout: 20 },
+      "12:30": { dinein: 25, takeout: 15 },
+      "13:00": { dinein: 18, takeout: 12 },
+      "13:30": { dinein: 12, takeout: 8 }
+    };
+
+    let orders = [];
+    let dishCount = 1;
+    let currentDishes = [
+      { type: "店内", curry: null, rice: null, spicy: null, toppings: [], hasToppingChoice: false, drinks: [], hasDrinkChoice: false },
+      { type: "店内", curry: null, rice: null, spicy: null, toppings: [], hasToppingChoice: false, drinks: [], hasDrinkChoice: false }
+    ];
+
+    let curListSubtab = "店内";
+    let curFilterSlot = "すべて";
+    let activeEditingId = null;
+    let toastTimer = null;
+    let isSheetOpen = false;
+    let isSubmitting = false;
+
+    // --- Firestore リアルタイムリスナー起動 ---
+    function initFirestoreSync() {
+      db.collection("orders").onSnapshot((snapshot) => {
+        orders = [];
+        snapshot.forEach((doc) => {
+          orders.push(doc.data());
+        });
+        orders.sort((a, b) => a.id - b.id);
+        refreshListHeader();
+        if (!document.getElementById("view-list").classList.contains("hidden")) {
+          renderList();
+        }
+      }, (error) => {
+        console.error("Firestore同期エラー:", error);
+        document.getElementById("db-status-dot").className = "w-2 h-2 rounded-full bg-rose-500";
+      });
+    }
+
+    function calcDishPrice(dish) {
+      if (!dish || !dish.curry) return 0;
+      let price = 0;
+      if (dish.curry === "チキン") price += PRICES.chicken;
+      else if (dish.curry === "ポーク") price += PRICES.pork;
+      else if (dish.curry === "限定") price += specialConfig.price;
+      if (dish.rice === "大盛") price += PRICES.riceLarge;
+      dish.toppings.forEach(t => price += (PRICES.toppings[t] || 0));
+      dish.drinks.forEach(d => price += (PRICES.drinks[d] || 0));
+      return price;
+    }
+
+    function calcTotalPrice() {
+      let total = 0;
+      for (let i = 0; i < dishCount; i++) total += calcDishPrice(currentDishes[i]);
+      return total;
+    }
+
+    function isDishComplete(dish) {
+      return (
+        dish &&
+        dish.curry !== null &&
+        dish.rice !== null &&
+        dish.spicy !== null &&
+        dish.hasToppingChoice === true &&
+        dish.hasDrinkChoice === true
+      );
+    }
+
+    function isAllComplete() {
+      for (let i = 0; i < dishCount; i++) {
+        if (!isDishComplete(currentDishes[i])) return false;
+      }
+      return true;
+    }
+
+    function setDishType(idx, type) {
+      currentDishes[idx].type = type;
+      renderDishUI(idx);
+      checkAndHandleCompletion();
+    }
+
+    function handleUserClickDishCount(n) {
+      dishCount = n;
+      applyDishCountUI();
+      checkAndHandleCompletion();
+    }
+
+    function applyDishCountUI() {
+      document.getElementById("btn-count-1").className = dishCount === 1 
+        ? "py-1 rounded bg-amber-600 text-white shadow-xs text-center transition" 
+        : "py-1 rounded text-slate-600 text-center transition";
+      document.getElementById("btn-count-2").className = dishCount === 2 
+        ? "py-1 rounded bg-amber-600 text-white shadow-xs text-center transition" 
+        : "py-1 rounded text-slate-600 text-center transition";
+      
+      const panel2 = document.getElementById("panel-dish-1");
+      const goto2Btn = document.getElementById("btn-goto-2nd");
+
+      if (dishCount === 2) {
+        panel2.classList.remove("hidden");
+        goto2Btn.classList.remove("hidden");
+      } else {
+        panel2.classList.add("hidden");
+        goto2Btn.classList.add("hidden");
+      }
+      renderDishUI(0);
+      if (dishCount === 2) renderDishUI(1);
+    }
+
+    function scrollToSecondDish() {
+      document.getElementById("panel-dish-1").scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function setDishProp(idx, prop, val) {
+      currentDishes[idx][prop] = val;
+      renderDishUI(idx);
+      checkAndHandleCompletion();
+    }
+
+    function setNoTopping(idx) {
+      currentDishes[idx].toppings = [];
+      currentDishes[idx].hasToppingChoice = true;
+      renderDishUI(idx);
+      checkAndHandleCompletion();
+    }
+
+    function toggleToppingItem(idx, t) {
+      currentDishes[idx].hasToppingChoice = true;
+      const arr = currentDishes[idx].toppings;
+      const pos = arr.indexOf(t);
+      if (pos > -1) {
+        arr.splice(pos, 1);
+        if (arr.length === 0) currentDishes[idx].hasToppingChoice = false;
+      } else {
+        arr.push(t);
+      }
+      renderDishUI(idx);
+      checkAndHandleCompletion();
+    }
+
+    function setNoDrink(idx) {
+      currentDishes[idx].drinks = [];
+      currentDishes[idx].hasDrinkChoice = true;
+      renderDishUI(idx);
+      checkAndHandleCompletion();
+    }
+
+    function toggleDrinkItem(idx, d) {
+      currentDishes[idx].hasDrinkChoice = true;
+      const arr = currentDishes[idx].drinks;
+      const pos = arr.indexOf(d);
+      if (pos > -1) {
+        arr.splice(pos, 1);
+        if (arr.length === 0) currentDishes[idx].hasDrinkChoice = false;
+      } else {
+        arr.push(d);
+      }
+      renderDishUI(idx);
+      checkAndHandleCompletion();
+    }
+
+    function checkAndHandleCompletion() {
+      if (isSubmitting) return;
+
+      refreshTotals();
+      const complete = isAllComplete();
+      const manualBtn = document.getElementById("btn-manual-open-sheet");
+      const summaryBadge = document.getElementById("btn-summary-badge");
+      const total = calcTotalPrice();
+
+      if (complete) {
+        manualBtn.className = "w-full h-11 bg-amber-600 hover:bg-amber-700 active:scale-98 transition text-white font-bold text-sm rounded-xl shadow flex items-center justify-between px-4 cursor-pointer";
+        summaryBadge.className = "text-xs font-mono bg-amber-700 px-2 py-1 rounded-lg text-white";
+        summaryBadge.innerText = `${dishCount}食 (¥${total.toLocaleString()})`;
+
+        if (!isSheetOpen) {
+          setTimeout(() => {
+            if (isAllComplete()) openBottomSheet();
+          }, 150);
+        }
+      } else {
+        manualBtn.className = "w-full h-11 bg-slate-200 text-slate-400 font-bold text-sm rounded-xl flex items-center justify-between px-4 cursor-not-allowed";
+        summaryBadge.className = "text-xs font-mono bg-slate-300 text-slate-500 px-2 py-1 rounded-lg";
+        summaryBadge.innerText = "未完了";
+        if (isSheetOpen) closeBottomSheet();
+      }
+    }
+
+    function tryOpenBottomSheet() {
+      if (isAllComplete()) {
+        openBottomSheet();
+      } else {
+        alert("すべての項目（カレー・量・辛さ・具材・他）を選択してください。");
+      }
+    }
+
+    function renderDishUI(idx) {
+      const d = currentDishes[idx];
+      const statusEl = document.getElementById(`status-dish-${idx}`);
+      if (isDishComplete(d)) {
+        statusEl.innerText = "✓ 完了";
+        statusEl.className = "text-[10px] text-emerald-600 font-bold";
+      } else {
+        statusEl.innerText = "未選択";
+        statusEl.className = "text-[10px] text-rose-500 font-normal";
+      }
+
+      const btnDinein = document.getElementById(`btn-type-${idx}-dinein`);
+      const btnTakeout = document.getElementById(`btn-type-${idx}-takeout`);
+      if (d.type === "店内") {
+        btnDinein.className = "py-0.5 rounded bg-amber-600 text-white shadow-xs text-center transition";
+        btnTakeout.className = "py-0.5 rounded text-slate-600 text-center transition";
+      } else {
+        btnDinein.className = "py-0.5 rounded text-slate-600 text-center transition";
+        btnTakeout.className = "py-0.5 rounded bg-slate-700 text-white shadow-xs text-center transition";
+      }
+
+      ["chicken", "pork", "special"].forEach(k => {
+        const key = k === "chicken" ? "チキン" : k === "pork" ? "ポーク" : "限定";
+        const btn = document.getElementById(`btn-curry-${idx}-${k}`);
+        if (d.curry === key) {
+          btn.className = "h-9 rounded-lg border-2 border-amber-600 bg-amber-500 text-white flex justify-between items-center px-2 shadow-xs";
+        } else {
+          btn.className = "h-9 rounded-lg border border-amber-200 bg-white text-slate-700 flex justify-between items-center px-2 hover:bg-amber-50";
+        }
+      });
+
+      document.getElementById(`btn-rice-${idx}-normal`).className = d.rice === "ふつう"
+        ? "h-8 rounded-lg border-2 border-blue-600 bg-blue-600 text-white shadow-xs font-bold"
+        : "h-8 rounded-lg border border-blue-200 bg-white text-slate-700 font-bold hover:bg-blue-50";
+      document.getElementById(`btn-rice-${idx}-large`).className = d.rice === "大盛"
+        ? "h-8 rounded-lg border-2 border-blue-600 bg-blue-600 text-white shadow-xs font-bold text-[11px]"
+        : "h-8 rounded-lg border border-blue-200 bg-white text-slate-700 font-bold text-[11px] hover:bg-blue-50";
+
+      document.getElementById(`btn-spicy-${idx}-normal`).className = d.spicy === "ふつう"
+        ? "h-8 rounded-lg border-2 border-rose-600 bg-rose-600 text-white shadow-xs font-bold"
+        : "h-8 rounded-lg border border-rose-200 bg-white text-slate-700 font-bold hover:bg-rose-50";
+      document.getElementById(`btn-spicy-${idx}-hot`).className = d.spicy === "辛口"
+        ? "h-8 rounded-lg border-2 border-rose-600 bg-rose-600 text-white shadow-xs font-bold"
+        : "h-8 rounded-lg border border-rose-200 bg-white text-slate-700 font-bold hover:bg-rose-50";
+      document.getElementById(`btn-spicy-${idx}-vhot`).className = d.spicy === "大辛"
+        ? "h-8 rounded-lg border-2 border-rose-600 bg-rose-600 text-white shadow-xs font-bold"
+        : "h-8 rounded-lg border border-rose-200 bg-white text-slate-700 font-bold hover:bg-rose-50";
+
+      renderToppingButtons(idx);
+      renderDrinkButtons(idx);
+    }
+
+    function renderToppingButtons(idx) {
+      const wrap = document.getElementById(`toppings-container-${idx}`);
+      wrap.innerHTML = "";
+      const d = currentDishes[idx];
+
+      const isNone = d.hasToppingChoice && d.toppings.length === 0;
+      const noneBtn = document.createElement("button");
+      noneBtn.type = "button";
+      noneBtn.onclick = () => setNoTopping(idx);
+      noneBtn.className = `py-1 px-2.5 rounded-lg font-bold border leading-none transition text-[11px] ${
+        isNone ? 'bg-slate-700 text-white border-slate-700 shadow-xs' : 'bg-white text-slate-500 border-slate-300'
+      }`;
+      noneBtn.innerText = "なし";
+      wrap.appendChild(noneBtn);
+
+      Object.keys(PRICES.toppings).forEach(item => {
+        const isAct = d.toppings.includes(item);
+        const price = PRICES.toppings[item];
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.onclick = () => toggleToppingItem(idx, item);
+        btn.className = `py-1 px-2 rounded-lg font-bold border leading-none transition text-[11px] ${
+          isAct ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs' : 'bg-white text-slate-700 border-emerald-200 hover:bg-emerald-50'
+        }`;
+        btn.innerHTML = `${item}<span class="text-[8px] font-normal opacity-75 ml-0.5">¥${price}</span>`;
+        wrap.appendChild(btn);
+      });
+    }
+
+    function renderDrinkButtons(idx) {
+      const wrap = document.getElementById(`drinks-container-${idx}`);
+      wrap.innerHTML = "";
+      const d = currentDishes[idx];
+
+      const isNone = d.hasDrinkChoice && d.drinks.length === 0;
+      const noneBtn = document.createElement("button");
+      noneBtn.type = "button";
+      noneBtn.onclick = () => setNoDrink(idx);
+      noneBtn.className = `py-1 px-2.5 rounded-lg font-bold border leading-none transition text-[11px] ${
+        isNone ? 'bg-slate-700 text-white border-slate-700 shadow-xs' : 'bg-white text-slate-500 border-slate-300'
+      }`;
+      noneBtn.innerText = "なし";
+      wrap.appendChild(noneBtn);
+
+      Object.keys(PRICES.drinks).forEach(item => {
+        const isAct = d.drinks.includes(item);
+        const price = PRICES.drinks[item];
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.onclick = () => toggleDrinkItem(idx, item);
+        btn.className = `py-1 px-2 rounded-lg font-bold border leading-none transition text-[11px] ${
+          isAct ? 'bg-purple-600 text-white border-purple-600 shadow-xs' : 'bg-white text-slate-700 border-purple-200 hover:bg-purple-50'
+        }`;
+        btn.innerHTML = `${item}<span class="text-[8px] font-normal opacity-75 ml-0.5">¥${price}</span>`;
+        wrap.appendChild(btn);
+      });
+    }
+
+    function refreshTotals() {
+      const total = calcTotalPrice();
+      document.getElementById("disp-total-price").innerText = total.toLocaleString();
+
+      let specialServed = 0;
+      orders.forEach(o => {
+        if (o.status !== "取消") {
+          o.dishes.forEach(d => { if (d.curry === "限定") specialServed++; });
+        }
+      });
+      const specRemain = Math.max(0, specialConfig.limit - specialServed);
+      document.querySelectorAll(".lbl-special-title").forEach(el => el.innerText = specialConfig.name);
+      document.querySelectorAll(".lbl-special-sub").forEach(el => el.innerText = `残${specRemain}`);
+
+      [0, 1].forEach(idx => {
+        const b = document.getElementById(`btn-curry-${idx}-special`);
+        if (specRemain <= 0) {
+          b.disabled = true;
+          b.classList.add("opacity-40", "bg-slate-100", "cursor-not-allowed");
+        } else {
+          b.disabled = false;
+          b.classList.remove("opacity-40", "bg-slate-100", "cursor-not-allowed");
+        }
+      });
+    }
+
+    function openBottomSheet() {
+      isSheetOpen = true;
+      const name = document.getElementById("inp-name").value.trim();
+      const total = calcTotalPrice();
+      const namePart = name ? `${name}様 / ` : '';
+      document.getElementById("sheet-target-info").innerText = `${namePart}${dishCount}食 / ¥${total.toLocaleString()}`;
+
+      renderSheetSlotButtons();
+
+      const wrapper = document.getElementById("sheet-wrapper");
+      const backdrop = document.getElementById("sheet-backdrop");
+      wrapper.classList.add("sheet-open");
+      backdrop.classList.remove("opacity-0", "pointer-events-none");
+      backdrop.classList.add("opacity-100", "pointer-events-auto");
+    }
+
+    function closeBottomSheet() {
+      isSheetOpen = false;
+      const wrapper = document.getElementById("sheet-wrapper");
+      const backdrop = document.getElementById("sheet-backdrop");
+      wrapper.classList.remove("sheet-open");
+      backdrop.classList.remove("opacity-100", "pointer-events-auto");
+      backdrop.classList.add("opacity-0", "pointer-events-none");
+    }
+
+    function renderSheetSlotButtons() {
+      const wrap = document.getElementById("grid-slot-buttons");
+      wrap.innerHTML = "";
+
+      const neededDinein = currentDishes.slice(0, dishCount).filter(d => d.type === "店内").length;
+      const neededTakeout = currentDishes.slice(0, dishCount).filter(d => d.type === "持ち帰り").length;
+
+      TIME_SLOTS.forEach(slot => {
+        let usedD = 0, usedT = 0;
+        orders.filter(o => o.slot === slot && o.status !== "取消").forEach(o => {
+          o.dishes.forEach(d => {
+            if (d.type === "店内") usedD++;
+            if (d.type === "持ち帰り") usedT++;
+          });
+        });
+
+        const remD = slotLimits[slot].dinein - usedD;
+        const remT = slotLimits[slot].takeout - usedT;
+        const totalRem = remD + remT;
+        const isFull = (remD < neededDinein) || (remT < neededTakeout);
+
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.disabled = isFull;
+        btn.onclick = () => submitOrderWithSlot(slot);
+
+        if (isFull) {
+          btn.className = "h-14 w-full rounded-2xl border border-slate-200 bg-slate-100 text-slate-400 font-bold flex flex-col justify-center items-center cursor-not-allowed text-xs";
+          btn.innerHTML = `<span class="font-mono text-sm">${slot}</span><span class="text-[10px] bg-slate-200 px-2 py-0.5 rounded mt-0.5">満席</span>`;
+        } else {
+          btn.className = "h-14 w-full rounded-2xl border-2 border-slate-200 bg-white hover:border-amber-500 font-bold flex flex-col justify-center items-center active:scale-95 transition shadow-xs";
+          btn.innerHTML = `
+            <span class="font-mono text-base font-bold text-slate-800">${slot}</span>
+            <span class="text-xs font-mono ${totalRem <= 4 ? 'text-rose-600 font-extrabold' : 'text-slate-500'}">残り ${totalRem}食</span>
+          `;
+        }
+        wrap.appendChild(btn);
+      });
+    }
+
+    // --- 受付確定（Firestoreへ保存） ---
+    function submitOrderWithSlot(slot) {
+      if (isSubmitting) return;
+      if (!currentDishes[0].curry) { closeBottomSheet(); return; }
+      if (dishCount === 2 && !currentDishes[1].curry) { closeBottomSheet(); return; }
+
+      isSubmitting = true;
+      closeBottomSheet();
+
+      const nameInp = document.getElementById("inp-name");
+      const phoneInp = document.getElementById("inp-phone");
+      const nextId = orders.length > 0 ? Math.max(...orders.map(o => o.id)) + 1 : 1;
+      const dishesToAdd = JSON.parse(JSON.stringify(currentDishes.slice(0, dishCount)));
+      const totalPrice = calcTotalPrice();
+
+      const newOrder = {
+        id: nextId,
+        name: nameInp.value.trim(),
+        phone: phoneInp.value.trim(),
+        dishes: dishesToAdd,
+        slot: slot,
+        totalPrice: totalPrice,
+        status: "未",
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      };
+
+      // Firestoreへ即座に送信
+      db.collection("orders").doc(String(nextId)).set(newOrder)
+        .then(() => {
+          showToast(`${String(nextId).padStart(3, '0')}番 確定 (${slot})`);
+        })
+        .catch((err) => {
+          alert("登録エラーが発生しました: " + err.message);
+        });
+
+      // 入力フォームリセット
+      nameInp.value = "";
+      phoneInp.value = "";
+      dishCount = 1;
+      currentDishes = [
+        { type: "店内", curry: null, rice: null, spicy: null, toppings: [], hasToppingChoice: false, drinks: [], hasDrinkChoice: false },
+        { type: "店内", curry: null, rice: null, spicy: null, toppings: [], hasToppingChoice: false, drinks: [], hasDrinkChoice: false }
+      ];
+
+      applyDishCountUI();
+      renderDishUI(0);
+      renderDishUI(1);
+      refreshTotals();
+
+      const manualBtn = document.getElementById("btn-manual-open-sheet");
+      const summaryBadge = document.getElementById("btn-summary-badge");
+      manualBtn.className = "w-full h-11 bg-slate-200 text-slate-400 font-bold text-sm rounded-xl flex items-center justify-between px-4 cursor-not-allowed";
+      summaryBadge.className = "text-xs font-mono bg-slate-300 text-slate-500 px-2 py-1 rounded-lg";
+      summaryBadge.innerText = "未選択";
+
+      document.getElementById("scroll-order-body").scrollTo({ top: 0, behavior: 'smooth' });
+
+      setTimeout(() => { isSubmitting = false; }, 300);
+    }
+
+    function showToast(txt) {
+      const t = document.getElementById("toast");
+      document.getElementById("toast-msg").innerText = txt;
+      t.classList.remove("hidden", "animate-toast");
+      void t.offsetWidth;
+      t.classList.add("animate-toast");
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => t.classList.add("hidden"), 1200);
+    }
+
+    function refreshListHeader() {
+      let totalMax = 0;
+      TIME_SLOTS.forEach(s => totalMax += (slotLimits[s].dinein + slotLimits[s].takeout));
+      let totalServed = 0;
+      let dUnhandled = 0;
+      let tUnhandled = 0;
+      let totalUnhandled = 0;
+
+      orders.forEach(o => {
+        if (o.status !== "取消") totalServed += o.dishes.length;
+        if (o.status === "未") {
+          totalUnhandled++;
+          o.dishes.forEach(d => {
+            if (d.type === "店内") dUnhandled++;
+            if (d.type === "持ち帰り") tUnhandled++;
+          });
+        }
+      });
+
+      document.getElementById("hdr-served").innerText = totalServed;
+      document.getElementById("hdr-total").innerText = totalMax;
+      document.getElementById("unhandled-cnt").innerText = totalUnhandled;
+      document.getElementById("badge-lst-dinein").innerText = dUnhandled;
+      document.getElementById("badge-lst-takeout").innerText = tUnhandled;
+      refreshTotals();
+    }
+
+    function renderList() {
+      refreshListHeader();
+      renderFilterBar();
+
+      const allDoneBanner = document.getElementById("banner-all-done");
+      const unhandled = orders.filter(o => o.status === "未").length;
+      if (orders.length > 0 && unhandled === 0) {
+        allDoneBanner.classList.remove("hidden");
+      } else {
+        allDoneBanner.classList.add("hidden");
+      }
+
+      const listWrap = document.getElementById("lst-orders-container");
+      listWrap.innerHTML = "";
+
+      let filtered = orders.filter(o => o.dishes.some(d => d.type === curListSubtab));
+      if (curFilterSlot !== "すべて") {
+        filtered = filtered.filter(o => o.slot === curFilterSlot);
+      }
+
+      if (filtered.length === 0) {
+        listWrap.innerHTML = `<div class="text-center py-8 text-slate-400 text-xs">受付はありません</div>`;
+        return;
+      }
+
+      const grouped = {};
+      filtered.forEach(o => {
+        if (!grouped[o.slot]) grouped[o.slot] = [];
+        grouped[o.slot].push(o);
+      });
+
+      Object.keys(grouped).sort().forEach(slot => {
+        const sec = document.createElement("div");
+        sec.className = "space-y-1.5";
+
+        let cCnt = 0, pCnt = 0, sCnt = 0, lCnt = 0, hCnt = 0;
+        const topSummary = {};
+        grouped[slot].forEach(o => {
+          if (o.status !== "取消") {
+            o.dishes.filter(d => d.type === curListSubtab).forEach(d => {
+              if (d.curry === "チキン") cCnt++;
+              if (d.curry === "ポーク") pCnt++;
+              if (d.curry === "限定") sCnt++;
+              if (d.rice === "大盛") lCnt++;
+              if (d.spicy === "辛口" || d.spicy === "大辛") hCnt++;
+              d.toppings.forEach(t => topSummary[t] = (topSummary[t] || 0) + 1);
+              d.drinks.forEach(dr => topSummary[dr] = (topSummary[dr] || 0) + 1);
+            });
+          }
+        });
+
+        const topStr = Object.keys(topSummary).map(k => `${k}:${topSummary[k]}`).join(' ');
+
+        const slotHeader = document.createElement("div");
+        slotHeader.className = "bg-amber-50 p-2 rounded-lg border border-amber-200 text-xs";
+        slotHeader.innerHTML = `
+          <div class="flex justify-between font-bold text-amber-900 mb-0.5">
+            <span>▼ ${slot}（${cCnt + pCnt + sCnt}食）</span>
+            <span class="text-[10px] text-amber-700">大盛:${lCnt} / 辛:${hCnt}</span>
+          </div>
+          <div class="text-[10px] font-mono text-slate-700 flex flex-wrap gap-x-2">
+            <span>チキン:${cCnt}</span><span>ポーク:${pCnt}</span><span>限定:${sCnt}</span>
+            ${topStr ? `<span class="text-slate-500 font-sans">[${topStr}]</span>` : ''}
+          </div>
+        `;
+        sec.appendChild(slotHeader);
+
+        grouped[slot].forEach(order => {
+          const card = document.createElement("div");
+          const isCancel = order.status === "取消";
+          card.className = `bg-white p-2.5 rounded-xl border border-slate-200 shadow-xs ${isCancel ? 'opacity-40 bg-slate-50' : ''}`;
+
+          const numStr = String(order.id).padStart(3, '0');
+          const isEdit = activeEditingId === order.id;
+
+          const dishItemsHtml = order.dishes.map((d) => {
+            const additions = [...d.toppings, ...d.drinks];
+            return `
+              <div class="text-[11px] text-slate-700 flex items-center gap-1.5 py-0.5">
+                <span class="font-bold text-slate-800">${d.curry}</span>
+                <span class="text-[10px] text-slate-500">(${d.rice}/${d.spicy})</span>
+                <span class="text-[9px] bg-slate-100 px-1 py-0.2 rounded font-medium">${d.type}</span>
+                ${additions.length ? `<span class="text-[9px] text-amber-700 font-bold">+${additions.join(',')}</span>` : ''}
+              </div>
+            `;
+          }).join('');
+
+          card.innerHTML = `
+            <div class="flex justify-between items-start mb-1.5">
+              <div class="flex-1 min-w-0 mr-2">
+                <div class="flex items-center gap-1.5 mb-1 flex-wrap">
+                  <span class="font-bold text-base font-mono text-slate-900">${numStr}番</span>
+                  ${order.name 
+                    ? `<span class="font-bold text-xs text-sky-950 bg-sky-100 border border-sky-300 px-2 py-0.5 rounded-md">${order.name} 様</span>` 
+                    : `<span class="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">お名前なし</span>`
+                  }
+                  <span class="text-[11px] font-bold bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded">${order.dishes.length}食</span>
+                  <span class="text-xs font-mono font-bold text-slate-800">¥${order.totalPrice.toLocaleString()}</span>
+                </div>
+                ${dishItemsHtml}
+              </div>
+              ${order.phone ? `
+                <button onclick="openCallModal('${numStr}', '${order.phone}')" class="text-[11px] bg-slate-100 hover:bg-slate-200 border border-slate-300 font-bold px-2 py-1 rounded-lg active:scale-95 transition flex-shrink-0">
+                  電話
+                </button>
+              ` : ''}
+            </div>
+
+            <div class="pt-1.5 border-t border-slate-100">
+              ${isEdit ? `
+                <div class="grid grid-cols-4 gap-1 text-[11px] font-bold">
+                  <button onclick="setStatus(${order.id}, '未')" class="py-1 rounded border ${order.status === '未' ? 'bg-slate-700 text-white' : 'bg-white text-slate-600'}">未</button>
+                  <button onclick="setStatus(${order.id}, '済')" class="py-1 rounded border ${order.status === '済' ? 'bg-emerald-600 text-white' : 'bg-white text-slate-600'}">済</button>
+                  <button onclick="setStatus(${order.id}, '不在')" class="py-1 rounded border ${order.status === '不在' ? 'bg-amber-500 text-white' : 'bg-white text-slate-600'}">不在</button>
+                  <button onclick="setStatus(${order.id}, '取消')" class="py-1 rounded border ${order.status === '取消' ? 'bg-rose-600 text-white' : 'bg-white text-slate-600'}">取消</button>
+                </div>
+              ` : `
+                <div class="flex justify-end">
+                  <button onclick="toggleEditStatus(${order.id})" class="text-[11px] font-bold px-2.5 py-0.5 rounded-lg border flex items-center gap-1 ${getStatusBadgeClass(order.status)}">
+                    <span>${order.status}</span>
+                    <span class="text-[8px]">▼</span>
+                  </button>
+                </div>
+              `}
+            </div>
+          `;
+          sec.appendChild(card);
+        });
+
+        listWrap.appendChild(sec);
+      });
+    }
+
+    function getStatusBadgeClass(st) {
+      switch (st) {
+        case "未": return "bg-white text-slate-700 border-slate-300";
+        case "済": return "bg-emerald-600 text-white border-emerald-600";
+        case "不在": return "bg-amber-100 text-amber-800 border-amber-300";
+        case "取消": return "bg-rose-50 text-rose-700 border-rose-200 line-through";
+      }
+    }
+
+    function toggleEditStatus(id) {
+      activeEditingId = activeEditingId === id ? null : id;
+      renderList();
+    }
+
+    // ステータス変更（Firestoreへ同期）
+    function setStatus(id, st) {
+      db.collection("orders").doc(String(id)).update({ status: st })
+        .then(() => {
+          activeEditingId = null;
+        })
+        .catch(err => alert("更新エラー: " + err.message));
+    }
+
+    function renderFilterBar() {
+      const bar = document.getElementById("filter-bar");
+      bar.innerHTML = "";
+      ["すべて", ...TIME_SLOTS].forEach(t => {
+        const btn = document.createElement("button");
+        btn.onclick = () => { curFilterSlot = t; renderList(); };
+        const act = curFilterSlot === t;
+        btn.className = `px-2 py-0.5 rounded-lg whitespace-nowrap font-bold text-[10px] ${act ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 border border-slate-200'}`;
+        btn.innerText = t;
+        bar.appendChild(btn);
+      });
+    }
+
+    function openConfigModal() {
+      document.getElementById("cfg-special-name").value = specialConfig.name;
+      document.getElementById("cfg-special-price").value = specialConfig.price;
+      document.getElementById("cfg-special-limit").value = specialConfig.limit;
+      const tbody = document.getElementById("cfg-tbody");
+      tbody.innerHTML = "";
+      TIME_SLOTS.forEach(slot => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td class="py-1 px-1 text-left font-sans font-bold text-slate-700">${slot}</td>
+          <td class="py-1 px-1">
+            <input type="number" min="0" value="${slotLimits[slot].dinein}" data-slot="${slot}" data-type="dinein" class="cfg-input w-12 text-center border border-slate-300 rounded py-0.5 font-bold focus:outline-none" />
+          </td>
+          <td class="py-1 px-1">
+            <input type="number" min="0" value="${slotLimits[slot].takeout}" data-slot="${slot}" data-type="takeout" class="cfg-input w-12 text-center border border-slate-300 rounded py-0.5 font-bold focus:outline-none" />
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+      document.getElementById("modal-config").classList.remove("hidden");
+    }
+
+    function saveConfigModal() {
+      specialConfig.name = document.getElementById("cfg-special-name").value.trim() || "限定";
+      specialConfig.price = parseInt(document.getElementById("cfg-special-price").value) || 1600;
+      specialConfig.limit = parseInt(document.getElementById("cfg-special-limit").value) || 0;
+
+      document.querySelectorAll(".cfg-input").forEach(inp => {
+        const val = parseInt(inp.value) || 0;
+        slotLimits[inp.dataset.slot][inp.dataset.type] = val;
+      });
+
+      closeConfigModal();
+      renderDishUI(0);
+      renderDishUI(1);
+      refreshListHeader();
+      showToast("設定を保存しました");
+    }
+
+    function closeConfigModal() {
+      document.getElementById("modal-config").classList.add("hidden");
+    }
+
+    function switchMainView(view) {
+      const vEntry = document.getElementById("main-entry-container");
+      const vList = document.getElementById("view-list");
+      const bEntry = document.getElementById("nav-btn-entry");
+      const bList = document.getElementById("nav-btn-list");
+
+      if (view === "entry") {
+        vEntry.classList.remove("hidden");
+        vList.classList.add("hidden");
+        bEntry.className = "h-full border-b-2 border-white text-white flex items-center justify-center";
+        bList.className = "h-full border-b-2 border-transparent text-amber-200 flex items-center justify-center";
+      } else {
+        vEntry.classList.add("hidden");
+        vList.classList.remove("hidden");
+        bEntry.className = "h-full border-b-2 border-transparent text-amber-200 flex items-center justify-center";
+        bList.className = "h-full border-b-2 border-white text-white flex items-center justify-center";
+        renderList();
+      }
+    }
+
+    function switchListSubtab(tab) {
+      curListSubtab = tab;
+      const bDinein = document.getElementById("tab-lst-dinein");
+      const bTakeout = document.getElementById("tab-lst-takeout");
+      if (tab === "店内") {
+        bDinein.className = "py-1 rounded bg-white text-slate-800 shadow-xs";
+        bTakeout.className = "py-1 rounded text-slate-600";
+      } else {
+        bDinein.className = "py-1 rounded text-slate-600";
+        bTakeout.className = "py-1 rounded bg-white text-slate-800 shadow-xs";
+      }
+      renderList();
+    }
+
+    function openCallModal(num, phone) {
+      document.getElementById("call-lbl-num").innerText = `${num}のお客様`;
+      document.getElementById("call-lbl-phone").innerText = phone;
+      document.getElementById("call-link-act").href = `tel:${phone}`;
+      document.getElementById("modal-call").classList.remove("hidden");
+    }
+
+    function closeCallModal() {
+      document.getElementById("modal-call").classList.add("hidden");
+    }
+
+    // 全件削除（Firestore一括削除）
+    function confirmResetAll() {
+      if (confirm("Firestore上の本日の受付データを全件削除しますか？\nこの操作は取り消せません。")) {
+        const batch = db.batch();
+        orders.forEach(o => {
+          batch.delete(db.collection("orders").doc(String(o.id)));
+        });
+        batch.commit()
+          .then(() => {
+            showToast("データを全件削除しました");
+          })
+          .catch(err => alert("削除エラー: " + err.message));
+      }
+    }
+
+    // 初期起動
+    applyDishCountUI();
+    renderDishUI(0);
+    renderDishUI(1);
+    initFirestoreSync();
+  </script>
+</body>
+</html>
