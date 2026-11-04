@@ -352,7 +352,7 @@
     let isSheetOpen = false;
     let isSubmitting = false;
 
-    // --- Firestore 同期（注文一覧 ＆ メニューマスター） ---
+    // --- Firestore 同期（注文一覧 ＆ メニューマスター ＆ 時間枠・食数） ---
     function initFirestoreSync() {
       // 1. メニューマスター同期
       db.collection("config").doc("menu_master").onSnapshot((doc) => {
@@ -363,7 +363,20 @@
         }
       });
 
-      // 2. 注文台帳同期
+      // 2. ★追加: 時間枠・食数マスター同期
+      db.collection("config").doc("time_slots").onSnapshot((doc) => {
+        if (doc.exists && doc.data().slots) {
+          const slotsData = doc.data().slots;
+          TIME_SLOTS.length = 0;
+          slotsData.forEach(s => {
+            TIME_SLOTS.push(s.time);
+            slotLimits[s.time] = { dinein: s.dinein, takeout: s.takeout };
+          });
+          refreshListHeader();
+        }
+      });
+
+      // 3. 注文台帳同期
       db.collection("orders").onSnapshot((snapshot) => {
         orders = [];
         snapshot.forEach((doc) => {
@@ -379,7 +392,6 @@
         document.getElementById("db-status-dot").className = "w-2 h-2 rounded-full bg-rose-500";
       });
     }
-
     // --- マスターデータに基づく選択肢の動的描画 ---
     function renderDynamicMenuOptions() {
       [0, 1].forEach(idx => {
