@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>商品・メニューマスター設定</title>
+  <title>システムマスター設定（商品・時間枠・食数）</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Lucide Icons (CDN) -->
   <script src="https://unpkg.com/lucide@latest"></script>
@@ -22,7 +22,7 @@
     .animate-toast { animation: toast-anim 2.5s forwards ease-out; }
   </style>
 </head>
-<body class="bg-slate-50 text-slate-800 font-sans select-none pb-16">
+<body class="bg-slate-50 text-slate-800 font-sans select-none pb-20">
 
   <!-- ==================== スティッキーヘッダー ==================== -->
   <header class="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-slate-200">
@@ -34,9 +34,9 @@
         </a>
         <div class="flex items-center gap-2">
           <div class="p-1.5 rounded-lg bg-amber-100 text-amber-800">
-            <i data-lucide="settings" class="w-4 h-4"></i>
+            <i data-lucide="settings-2" class="w-4 h-4"></i>
           </div>
-          <span class="text-sm font-bold text-slate-900">メニュー・価格設定マスター</span>
+          <span class="text-sm font-bold text-slate-900">店舗運用マスター設定</span>
         </div>
       </div>
 
@@ -44,7 +44,7 @@
         <button onclick="resetToDefaultPrompt()" class="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 text-xs font-bold transition">
           初期値に戻す
         </button>
-        <button onclick="saveMenuMaster()" class="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 active:scale-95 text-white text-xs font-bold shadow-sm transition">
+        <button onclick="saveAllMasterSettings()" class="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 active:scale-95 text-white text-xs font-bold shadow-sm transition">
           <i data-lucide="save" class="w-3.5 h-3.5"></i>
           <span>設定を保存</span>
         </button>
@@ -55,7 +55,47 @@
   <!-- ==================== メイン設定エリア ==================== -->
   <main class="max-w-4xl mx-auto px-4 py-6 space-y-6">
 
-    <!-- 1. カレー設定（定番 ＆ 限定食数・価格） -->
+    <!-- 1. 時間枠 ＆ 上限食数設定（追加・削除・食数編集） -->
+    <section class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+        <div class="flex items-center gap-2">
+          <i data-lucide="clock" class="w-4 h-4 text-sky-600"></i>
+          <h2 class="text-xs font-bold text-slate-900 uppercase tracking-wider">案内時間枠 ＆ 各枠上限食数</h2>
+        </div>
+        <button onclick="addSlotRow('14:00', 10, 5)" class="text-xs text-sky-700 hover:text-sky-800 font-bold flex items-center gap-1">
+          <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+          <span>時間枠を追加</span>
+        </button>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-xs text-left">
+          <thead class="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+            <tr>
+              <th class="py-2 px-3 w-36">案内時間（例: 11:00）</th>
+              <th class="py-2 px-3 w-36 text-center text-amber-700">店内上限（食）</th>
+              <th class="py-2 px-3 w-36 text-center text-slate-700">持帰上限（食）</th>
+              <th class="py-2 px-3 text-right">枠合計</th>
+              <th class="py-2 px-3 w-16 text-center">削除</th>
+            </tr>
+          </thead>
+          <tbody id="slot-list-container" class="divide-y divide-slate-100 font-mono">
+            <!-- JSで動的に時間枠行を生成 -->
+          </tbody>
+          <tfoot class="bg-slate-50/80 font-bold text-slate-700 border-t border-slate-200">
+            <tr>
+              <td class="py-2.5 px-3">全枠合計</td>
+              <td class="py-2.5 px-3 text-center text-amber-800" id="total-dinein-capacity">0食</td>
+              <td class="py-2.5 px-3 text-center text-slate-800" id="total-takeout-capacity">0食</td>
+              <td class="py-2.5 px-3 text-right font-black text-sm text-slate-900" id="grand-total-capacity">0食</td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </section>
+
+    <!-- 2. カレー商品設定（定番 ＆ 限定食数・価格） -->
     <section class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
       <div class="flex items-center justify-between border-b border-slate-100 pb-2">
         <div class="flex items-center gap-2">
@@ -107,27 +147,25 @@
       </div>
     </section>
 
-    <!-- 2. オプション設定（ライス大盛 ＆ 辛さ名称） -->
+    <!-- 3. ライス大盛料金 -->
     <section class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
       <div class="flex items-center justify-between border-b border-slate-100 pb-2">
         <div class="flex items-center gap-2">
           <i data-lucide="layers" class="w-4 h-4 text-blue-600"></i>
-          <h2 class="text-xs font-bold text-slate-900 uppercase tracking-wider">ライス大盛・オプション追加料金</h2>
+          <h2 class="text-xs font-bold text-slate-900 uppercase tracking-wider">ライス大盛 追加料金</h2>
         </div>
       </div>
 
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div class="bg-slate-50 p-3 rounded-lg border border-slate-200 flex justify-between items-center">
-          <span class="text-xs font-bold text-slate-700">ライスの大盛（プラス追加料金）</span>
-          <div class="flex items-center gap-1 text-xs font-mono w-28">
-            <span>+¥</span>
-            <input type="number" id="rice-large-price" value="150" min="0" step="10" class="w-full text-xs font-bold py-1 px-2 border border-slate-300 rounded bg-white text-right" />
-          </div>
+      <div class="bg-slate-50 p-3 rounded-lg border border-slate-200 flex justify-between items-center max-w-sm">
+        <span class="text-xs font-bold text-slate-700">ライスの大盛（プラス追加料金）</span>
+        <div class="flex items-center gap-1 text-xs font-mono w-28">
+          <span>+¥</span>
+          <input type="number" id="rice-large-price" value="150" min="0" step="10" class="w-full text-xs font-bold py-1 px-2 border border-slate-300 rounded bg-white text-right" />
         </div>
       </div>
     </section>
 
-    <!-- 3. トッピング設定（自由追加・編集・削除） -->
+    <!-- 4. トッピング設定 -->
     <section class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
       <div class="flex items-center justify-between border-b border-slate-100 pb-2">
         <div class="flex items-center gap-2">
@@ -140,12 +178,10 @@
         </button>
       </div>
 
-      <div id="topping-list-container" class="space-y-2">
-        <!-- JSで動的にトッピング行を生成 -->
-      </div>
+      <div id="topping-list-container" class="space-y-2"></div>
     </section>
 
-    <!-- 4. ドリンク・物販設定（自由追加・編集・削除） -->
+    <!-- 5. ドリンク・その他設定 -->
     <section class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
       <div class="flex items-center justify-between border-b border-slate-100 pb-2">
         <div class="flex items-center gap-2">
@@ -158,9 +194,7 @@
         </button>
       </div>
 
-      <div id="drink-list-container" class="space-y-2">
-        <!-- JSで動的にドリンク行を生成 -->
-      </div>
+      <div id="drink-list-container" class="space-y-2"></div>
     </section>
 
   </main>
@@ -185,8 +219,18 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
-    // デフォルトマスターデータ[cite: 2]
-    const DEFAULT_MASTER = {
+    // デフォルトの時間枠・食数マスター
+    const DEFAULT_TIME_SLOTS = [
+      { time: "11:00", dinein: 15, takeout: 10 },
+      { time: "11:30", dinein: 20, takeout: 15 },
+      { time: "12:00", dinein: 30, takeout: 20 },
+      { time: "12:30", dinein: 25, takeout: 15 },
+      { time: "13:00", dinein: 18, takeout: 12 },
+      { time: "13:30", dinein: 12, takeout: 8 }
+    ];
+
+    // デフォルトのメニューマスター[cite: 2]
+    const DEFAULT_MENU_MASTER = {
       curry1: { name: "チキン", price: 1500 },
       curry2: { name: "ポーク", price: 1500 },
       currySpecial: { name: "限定", price: 1600, limit: 10 },
@@ -207,22 +251,84 @@
     };
 
     function init() {
-      // Firestoreから現在のマスター設定を読み込み
+      // 1. 時間枠マスター読み込み
+      db.collection("config").doc("time_slots").get()
+        .then((doc) => {
+          if (doc.exists && doc.data().slots) {
+            renderSlotTable(doc.data().slots);
+          } else {
+            renderSlotTable(DEFAULT_TIME_SLOTS);
+          }
+        })
+        .catch(() => renderSlotTable(DEFAULT_TIME_SLOTS));
+
+      // 2. メニューマスター読み込み
       db.collection("config").doc("menu_master").get()
         .then((doc) => {
           if (doc.exists) {
-            renderMasterUI(doc.data());
+            renderMenuUI(doc.data());
           } else {
-            renderMasterUI(DEFAULT_MASTER);
+            renderMenuUI(DEFAULT_MENU_MASTER);
           }
         })
-        .catch((err) => {
-          console.error("マスター読み込みエラー:", err);
-          renderMasterUI(DEFAULT_MASTER);
-        });
+        .catch(() => renderMenuUI(DEFAULT_MENU_MASTER));
     }
 
-    function renderMasterUI(data) {
+    // --- 時間枠テーブルの描画 ---
+    function renderSlotTable(slots) {
+      const container = document.getElementById("slot-list-container");
+      container.innerHTML = "";
+      slots.forEach(s => addSlotRow(s.time, s.dinein, s.takeout));
+      calculateSlotTotals();
+    }
+
+    function addSlotRow(time, dinein, takeout) {
+      const container = document.getElementById("slot-list-container");
+      const tr = document.createElement("tr");
+      tr.className = "hover:bg-slate-50/80 transition slot-row";
+      tr.innerHTML = `
+        <td class="py-2 px-3">
+          <input type="text" value="${time}" placeholder="11:00" class="slot-time w-24 text-xs font-bold py-1.5 px-2 border border-slate-300 rounded bg-white focus:outline-none focus:border-sky-600" />
+        </td>
+        <td class="py-2 px-3 text-center">
+          <input type="number" value="${dinein}" min="0" oninput="calculateSlotTotals()" class="slot-dinein w-20 text-xs font-bold py-1.5 px-2 border border-amber-300 rounded bg-white text-center text-amber-900 focus:outline-none focus:border-amber-600" />
+        </td>
+        <td class="py-2 px-3 text-center">
+          <input type="number" value="${takeout}" min="0" oninput="calculateSlotTotals()" class="slot-takeout w-20 text-xs font-bold py-1.5 px-2 border border-slate-300 rounded bg-white text-center text-slate-800 focus:outline-none focus:border-slate-600" />
+        </td>
+        <td class="py-2 px-3 text-right font-bold text-slate-700 slot-row-sum">
+          ${parseInt(dinein || 0) + parseInt(takeout || 0)}食
+        </td>
+        <td class="py-2 px-3 text-center">
+          <button type="button" onclick="this.closest('tr').remove(); calculateSlotTotals();" class="p-1.5 text-slate-400 hover:text-rose-600 transition">
+            <i data-lucide="trash-2" class="w-4 h-4"></i>
+          </button>
+        </td>
+      `;
+      container.appendChild(tr);
+      lucide.createIcons();
+      calculateSlotTotals();
+    }
+
+    function calculateSlotTotals() {
+      let totalD = 0;
+      let totalT = 0;
+
+      document.querySelectorAll(".slot-row").forEach(row => {
+        const d = parseInt(row.querySelector(".slot-dinein").value) || 0;
+        const t = parseInt(row.querySelector(".slot-takeout").value) || 0;
+        totalD += d;
+        totalT += t;
+        row.querySelector(".slot-row-sum").innerText = `${d + t}食`;
+      });
+
+      document.getElementById("total-dinein-capacity").innerText = `${totalD}食`;
+      document.getElementById("total-takeout-capacity").innerText = `${totalT}食`;
+      document.getElementById("grand-total-capacity").innerText = `${totalD + totalT}食`;
+    }
+
+    // --- メニューマスター描画 ---
+    function renderMenuUI(data) {
       document.getElementById("curry-1-name").value = data.curry1?.name || "チキン";
       document.getElementById("curry-1-price").value = data.curry1?.price || 1500;
 
@@ -235,12 +341,10 @@
 
       document.getElementById("rice-large-price").value = data.riceLargePrice || 150;
 
-      // トッピング行
       const topContainer = document.getElementById("topping-list-container");
       topContainer.innerHTML = "";
       (data.toppings || []).forEach(t => addToppingRow(t.name, t.price));
 
-      // ドリンク行
       const drkContainer = document.getElementById("drink-list-container");
       drkContainer.innerHTML = "";
       (data.drinks || []).forEach(d => addDrinkRow(d.name, d.price));
@@ -248,7 +352,6 @@
       lucide.createIcons();
     }
 
-    // トッピング行追加
     function addToppingRow(name, price) {
       const container = document.getElementById("topping-list-container");
       const div = document.createElement("div");
@@ -267,7 +370,6 @@
       lucide.createIcons();
     }
 
-    // ドリンク行追加
     function addDrinkRow(name, price) {
       const container = document.getElementById("drink-list-container");
       const div = document.createElement("div");
@@ -286,8 +388,20 @@
       lucide.createIcons();
     }
 
-    // 保存処理（Firestoreへ送信）
-    function saveMenuMaster() {
+    // --- 一括保存処理（時間枠 ＋ メニュー） ---
+    function saveAllMasterSettings() {
+      // 1. 時間枠・上限食数データ収集
+      const slots = [];
+      document.querySelectorAll(".slot-row").forEach(row => {
+        const time = row.querySelector(".slot-time").value.trim();
+        const dinein = parseInt(row.querySelector(".slot-dinein").value) || 0;
+        const takeout = parseInt(row.querySelector(".slot-takeout").value) || 0;
+        if (time) {
+          slots.push({ time, dinein, takeout });
+        }
+      });
+
+      // 2. メニューマスターデータ収集
       const toppings = [];
       document.querySelectorAll(".topping-row").forEach(row => {
         const name = row.querySelector(".top-name").value.trim();
@@ -302,7 +416,7 @@
         if (name) drinks.push({ name, price });
       });
 
-      const masterData = {
+      const menuMasterData = {
         curry1: {
           name: document.getElementById("curry-1-name").value.trim() || "チキン",
           price: parseInt(document.getElementById("curry-1-price").value) || 1500
@@ -322,16 +436,22 @@
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       };
 
-      db.collection("config").doc("menu_master").set(masterData)
+      // Firestore Batch書き込み
+      const batch = db.batch();
+      batch.set(db.collection("config").doc("time_slots"), { slots: slots, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+      batch.set(db.collection("config").doc("menu_master"), menuMasterData);
+
+      batch.commit()
         .then(() => {
-          showToast("メニュー設定を保存しました");
+          showToast("時間枠・食数・メニュー設定を保存しました");
         })
         .catch(err => alert("保存エラー: " + err.message));
     }
 
     function resetToDefaultPrompt() {
-      if (confirm("メニューマスターを初期値にリセットしますか？")) {
-        renderMasterUI(DEFAULT_MASTER);
+      if (confirm("時間枠およびメニュー設定を初期値にリセットしますか？")) {
+        renderSlotTable(DEFAULT_TIME_SLOTS);
+        renderMenuUI(DEFAULT_MENU_MASTER);
         showToast("初期値を読み込みました（保存ボタンで確定）");
       }
     }
