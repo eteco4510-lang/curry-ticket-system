@@ -29,17 +29,22 @@
 <body class="bg-slate-100 text-slate-800 flex flex-col font-sans select-none pb-[env(safe-area-inset-bottom)]">
 
   <!-- ヘッダー -->
-  <header class="bg-amber-600 text-white flex-shrink-0 shadow z-20">
-    <div class="px-2.5 h-9 flex items-center justify-between">
-      <div class="font-bold text-sm tracking-wide flex items-center gap-1.5">
-        <span>カレー受付</span>
-        <span class="w-2 h-2 rounded-full bg-emerald-400" id="db-status-dot" title="同期中"></span>
-      </div>
-      <button onclick="openConfigModal()" class="text-[11px] bg-amber-700 active:bg-amber-800 px-2.5 py-0.5 rounded-full font-mono flex items-center gap-1">
-        本日 <span id="hdr-served" class="font-bold">0</span>/<span id="hdr-total">200</span>
-        <span class="text-[10px]">⚙️</span>
-      </button>
+  <!-- index.html のヘッダー部分 -->
+<header class="bg-amber-600 text-white flex-shrink-0 shadow z-20">
+  <div class="px-2.5 h-9 flex items-center justify-between">
+    <div class="font-bold text-sm tracking-wide flex items-center gap-2">
+      <span>カレー受付</span>
+      <span class="w-2 h-2 rounded-full bg-emerald-400" id="db-status-dot" title="同期中"></span>
+      <!-- ★ 追加: 売上レポートへのリンク -->
+      <a href="report.html" class="text-[10px] bg-amber-700 hover:bg-amber-800 px-2 py-0.5 rounded border border-amber-500 font-bold tracking-normal transition">
+        売上・PDF
+      </a>
     </div>
+    <button onclick="openConfigModal()" class="text-[11px] bg-amber-700 active:bg-amber-800 px-2.5 py-0.5 rounded-full font-mono flex items-center gap-1">
+      本日 <span id="hdr-served" class="font-bold">0</span>/<span id="hdr-total">200</span>
+      <span class="text-[10px]">⚙️</span>
+    </button>
+  </div>
     <div class="grid grid-cols-2 text-center text-xs font-bold bg-amber-700 h-[26px] items-center">
       <button id="nav-btn-entry" onclick="switchMainView('entry')" class="h-full border-b-2 border-white text-white flex items-center justify-center">
         受付・注文
