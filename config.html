@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>商品・メニューマスター設定</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons (CDN) -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Firebase SDK (Compat版 CDN) -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  <style>
+    * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+    html, body { min-height: 100vh; touch-action: manipulation; }
+    @keyframes toast-anim {
+      0% { opacity: 0; transform: translateY(10px); }
+      15% { opacity: 1; transform: translateY(0); }
+      85% { opacity: 1; transform: translateY(0); }
+      100% { opacity: 0; transform: translateY(10px); }
+    }
+    .animate-toast { animation: toast-anim 2.5s forwards ease-out; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans select-none pb-16">
+
+  <!-- ==================== スティッキーヘッダー ==================== -->
+  <header class="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-slate-200">
+    <div class="max-w-4xl mx-auto px-4 h-14 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <a href="index.html" class="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 text-xs font-bold flex items-center gap-1 transition">
+          <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+          <span>受付へ戻る</span>
+        </a>
+        <div class="flex items-center gap-2">
+          <div class="p-1.5 rounded-lg bg-amber-100 text-amber-800">
+            <i data-lucide="settings" class="w-4 h-4"></i>
+          </div>
+          <span class="text-sm font-bold text-slate-900">メニュー・価格設定マスター</span>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button onclick="resetToDefaultPrompt()" class="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 text-xs font-bold transition">
+          初期値に戻す
+        </button>
+        <button onclick="saveMenuMaster()" class="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 active:scale-95 text-white text-xs font-bold shadow-sm transition">
+          <i data-lucide="save" class="w-3.5 h-3.5"></i>
+          <span>設定を保存</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ==================== メイン設定エリア ==================== -->
+  <main class="max-w-4xl mx-auto px-4 py-6 space-y-6">
+
+    <!-- 1. カレー設定（定番 ＆ 限定食数・価格） -->
+    <section class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+        <div class="flex items-center gap-2">
+          <i data-lucide="utensils" class="w-4 h-4 text-amber-600"></i>
+          <h2 class="text-xs font-bold text-slate-900 uppercase tracking-wider">カレー商品設定</h2>
+        </div>
+        <span class="text-[11px] text-slate-400">税込単価（円）</span>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <!-- チキン -->
+        <div class="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-1.5">
+          <label class="block text-xs font-bold text-slate-700">カレー 1</label>
+          <input type="text" id="curry-1-name" value="チキン" class="w-full text-xs font-bold py-1.5 px-2 border border-slate-300 rounded bg-white focus:outline-none focus:border-amber-600" />
+          <div class="flex items-center gap-1 text-xs font-mono">
+            <span>¥</span>
+            <input type="number" id="curry-1-price" value="1500" min="0" step="10" class="w-full text-xs font-bold py-1 px-2 border border-slate-300 rounded bg-white focus:outline-none focus:border-amber-600 text-right" />
+          </div>
+        </div>
+
+        <!-- ポーク -->
+        <div class="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-1.5">
+          <label class="block text-xs font-bold text-slate-700">カレー 2</label>
+          <input type="text" id="curry-2-name" value="ポーク" class="w-full text-xs font-bold py-1.5 px-2 border border-slate-300 rounded bg-white focus:outline-none focus:border-amber-600" />
+          <div class="flex items-center gap-1 text-xs font-mono">
+            <span>¥</span>
+            <input type="number" id="curry-2-price" value="1500" min="0" step="10" class="w-full text-xs font-bold py-1 px-2 border border-slate-300 rounded bg-white focus:outline-none focus:border-amber-600 text-right" />
+          </div>
+        </div>
+
+        <!-- 限定メニュー -->
+        <div class="bg-amber-50/60 p-3 rounded-lg border border-amber-200 space-y-1.5">
+          <div class="flex justify-between items-center">
+            <label class="block text-xs font-bold text-amber-900">限定カレー</label>
+            <span class="text-[10px] text-amber-700 font-bold">限定仕込み数</span>
+          </div>
+          <input type="text" id="curry-special-name" value="限定" class="w-full text-xs font-bold py-1.5 px-2 border border-amber-300 rounded bg-white focus:outline-none focus:border-amber-600" />
+          <div class="grid grid-cols-2 gap-1.5 text-xs font-mono">
+            <div class="flex items-center gap-1">
+              <span>¥</span>
+              <input type="number" id="curry-special-price" value="1600" min="0" step="10" class="w-full text-xs font-bold py-1 px-1 border border-amber-300 rounded bg-white text-right" />
+            </div>
+            <div class="flex items-center gap-1">
+              <input type="number" id="curry-special-limit" value="10" min="0" class="w-full text-xs font-bold py-1 px-1 border border-amber-300 rounded bg-white text-right" />
+              <span class="font-sans text-[11px] text-slate-500">食</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. オプション設定（ライス大盛 ＆ 辛さ名称） -->
+    <section class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+        <div class="flex items-center gap-2">
+          <i data-lucide="layers" class="w-4 h-4 text-blue-600"></i>
+          <h2 class="text-xs font-bold text-slate-900 uppercase tracking-wider">ライス大盛・オプション追加料金</h2>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div class="bg-slate-50 p-3 rounded-lg border border-slate-200 flex justify-between items-center">
+          <span class="text-xs font-bold text-slate-700">ライスの大盛（プラス追加料金）</span>
+          <div class="flex items-center gap-1 text-xs font-mono w-28">
+            <span>+¥</span>
+            <input type="number" id="rice-large-price" value="150" min="0" step="10" class="w-full text-xs font-bold py-1 px-2 border border-slate-300 rounded bg-white text-right" />
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. トッピング設定（自由追加・編集・削除） -->
+    <section class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+        <div class="flex items-center gap-2">
+          <i data-lucide="plus-circle" class="w-4 h-4 text-emerald-600"></i>
+          <h2 class="text-xs font-bold text-slate-900 uppercase tracking-wider">具材トッピング一覧</h2>
+        </div>
+        <button onclick="addToppingRow('', 100)" class="text-xs text-emerald-700 hover:text-emerald-800 font-bold flex items-center gap-1">
+          <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+          <span>トッピングを追加</span>
+        </button>
+      </div>
+
+      <div id="topping-list-container" class="space-y-2">
+        <!-- JSで動的にトッピング行を生成 -->
+      </div>
+    </section>
+
+    <!-- 4. ドリンク・物販設定（自由追加・編集・削除） -->
+    <section class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+        <div class="flex items-center gap-2">
+          <i data-lucide="coffee" class="w-4 h-4 text-purple-600"></i>
+          <h2 class="text-xs font-bold text-slate-900 uppercase tracking-wider">ドリンク・お土産・その他</h2>
+        </div>
+        <button onclick="addDrinkRow('', 350)" class="text-xs text-purple-700 hover:text-purple-800 font-bold flex items-center gap-1">
+          <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+          <span>品目を追加</span>
+        </button>
+      </div>
+
+      <div id="drink-list-container" class="space-y-2">
+        <!-- JSで動的にドリンク行を生成 -->
+      </div>
+    </section>
+
+  </main>
+
+  <!-- トースト通知 -->
+  <div id="toast" class="hidden fixed bottom-5 right-5 z-50 bg-slate-900 text-white px-4 py-2.5 rounded-xl shadow-xl flex items-center gap-2 text-xs font-bold">
+    <i data-lucide="check" class="w-4 h-4 text-emerald-400"></i>
+    <span id="toast-msg">設定を保存しました</span>
+  </div>
+
+  <script>
+    // ===== Firebase 設定 =====
+    const firebaseConfig = {
+      apiKey: "AIzaSyC1C4LIZpiiEA6PohPTC-XsI4ayfWgzBpo",
+      authDomain: "curry-ticket-system.firebaseapp.com",
+      projectId: "curry-ticket-system",
+      storageBucket: "curry-ticket-system.firebasestorage.app",
+      messagingSenderId: "295266310086",
+      appId: "1:295266310086:web:a86117b637fd7fb4a0c4c7",
+      measurementId: "G-QY5GDDWG5Y"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    // デフォルトマスターデータ[cite: 2]
+    const DEFAULT_MASTER = {
+      curry1: { name: "チキン", price: 1500 },
+      curry2: { name: "ポーク", price: 1500 },
+      currySpecial: { name: "限定", price: 1600, limit: 10 },
+      riceLargePrice: 150,
+      toppings: [
+        { name: "キーマ", price: 350 },
+        { name: "アチャール", price: 350 },
+        { name: "うずら", price: 150 },
+        { name: "パクチー", price: 200 },
+        { name: "豆カレー", price: 350 },
+        { name: "サラダ", price: 200 },
+        { name: "ピクルス", price: 100 }
+      ],
+      drinks: [
+        { name: "ビール", price: 450 },
+        { name: "チャイ", price: 350 }
+      ]
+    };
+
+    function init() {
+      // Firestoreから現在のマスター設定を読み込み
+      db.collection("config").doc("menu_master").get()
+        .then((doc) => {
+          if (doc.exists) {
+            renderMasterUI(doc.data());
+          } else {
+            renderMasterUI(DEFAULT_MASTER);
+          }
+        })
+        .catch((err) => {
+          console.error("マスター読み込みエラー:", err);
+          renderMasterUI(DEFAULT_MASTER);
+        });
+    }
+
+    function renderMasterUI(data) {
+      document.getElementById("curry-1-name").value = data.curry1?.name || "チキン";
+      document.getElementById("curry-1-price").value = data.curry1?.price || 1500;
+
+      document.getElementById("curry-2-name").value = data.curry2?.name || "ポーク";
+      document.getElementById("curry-2-price").value = data.curry2?.price || 1500;
+
+      document.getElementById("curry-special-name").value = data.currySpecial?.name || "限定";
+      document.getElementById("curry-special-price").value = data.currySpecial?.price || 1600;
+      document.getElementById("curry-special-limit").value = data.currySpecial?.limit ?? 10;
+
+      document.getElementById("rice-large-price").value = data.riceLargePrice || 150;
+
+      // トッピング行
+      const topContainer = document.getElementById("topping-list-container");
+      topContainer.innerHTML = "";
+      (data.toppings || []).forEach(t => addToppingRow(t.name, t.price));
+
+      // ドリンク行
+      const drkContainer = document.getElementById("drink-list-container");
+      drkContainer.innerHTML = "";
+      (data.drinks || []).forEach(d => addDrinkRow(d.name, d.price));
+
+      lucide.createIcons();
+    }
+
+    // トッピング行追加
+    function addToppingRow(name, price) {
+      const container = document.getElementById("topping-list-container");
+      const div = document.createElement("div");
+      div.className = "flex items-center gap-2 topping-row";
+      div.innerHTML = `
+        <input type="text" value="${name}" placeholder="トッピング名" class="flex-1 text-xs font-bold py-1.5 px-2.5 border border-slate-300 rounded bg-white focus:outline-none focus:border-emerald-600 top-name" />
+        <div class="flex items-center gap-1 text-xs font-mono w-28">
+          <span>¥</span>
+          <input type="number" value="${price}" min="0" step="10" class="w-full text-xs font-bold py-1.5 px-2 border border-slate-300 rounded bg-white text-right top-price" />
+        </div>
+        <button type="button" onclick="this.parentElement.remove()" class="p-1.5 text-slate-400 hover:text-rose-600 transition">
+          <i data-lucide="trash-2" class="w-4 h-4"></i>
+        </button>
+      `;
+      container.appendChild(div);
+      lucide.createIcons();
+    }
+
+    // ドリンク行追加
+    function addDrinkRow(name, price) {
+      const container = document.getElementById("drink-list-container");
+      const div = document.createElement("div");
+      div.className = "flex items-center gap-2 drink-row";
+      div.innerHTML = `
+        <input type="text" value="${name}" placeholder="ドリンク・物販名" class="flex-1 text-xs font-bold py-1.5 px-2.5 border border-slate-300 rounded bg-white focus:outline-none focus:border-purple-600 drk-name" />
+        <div class="flex items-center gap-1 text-xs font-mono w-28">
+          <span>¥</span>
+          <input type="number" value="${price}" min="0" step="10" class="w-full text-xs font-bold py-1.5 px-2 border border-slate-300 rounded bg-white text-right drk-price" />
+        </div>
+        <button type="button" onclick="this.parentElement.remove()" class="p-1.5 text-slate-400 hover:text-rose-600 transition">
+          <i data-lucide="trash-2" class="w-4 h-4"></i>
+        </button>
+      `;
+      container.appendChild(div);
+      lucide.createIcons();
+    }
+
+    // 保存処理（Firestoreへ送信）
+    function saveMenuMaster() {
+      const toppings = [];
+      document.querySelectorAll(".topping-row").forEach(row => {
+        const name = row.querySelector(".top-name").value.trim();
+        const price = parseInt(row.querySelector(".top-price").value) || 0;
+        if (name) toppings.push({ name, price });
+      });
+
+      const drinks = [];
+      document.querySelectorAll(".drink-row").forEach(row => {
+        const name = row.querySelector(".drk-name").value.trim();
+        const price = parseInt(row.querySelector(".drk-price").value) || 0;
+        if (name) drinks.push({ name, price });
+      });
+
+      const masterData = {
+        curry1: {
+          name: document.getElementById("curry-1-name").value.trim() || "チキン",
+          price: parseInt(document.getElementById("curry-1-price").value) || 1500
+        },
+        curry2: {
+          name: document.getElementById("curry-2-name").value.trim() || "ポーク",
+          price: parseInt(document.getElementById("curry-2-price").value) || 1500
+        },
+        currySpecial: {
+          name: document.getElementById("curry-special-name").value.trim() || "限定",
+          price: parseInt(document.getElementById("curry-special-price").value) || 1600,
+          limit: parseInt(document.getElementById("curry-special-limit").value) || 0
+        },
+        riceLargePrice: parseInt(document.getElementById("rice-large-price").value) || 150,
+        toppings: toppings,
+        drinks: drinks,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      };
+
+      db.collection("config").doc("menu_master").set(masterData)
+        .then(() => {
+          showToast("メニュー設定を保存しました");
+        })
+        .catch(err => alert("保存エラー: " + err.message));
+    }
+
+    function resetToDefaultPrompt() {
+      if (confirm("メニューマスターを初期値にリセットしますか？")) {
+        renderMasterUI(DEFAULT_MASTER);
+        showToast("初期値を読み込みました（保存ボタンで確定）");
+      }
+    }
+
+    function showToast(txt) {
+      const t = document.getElementById("toast");
+      document.getElementById("toast-msg").innerText = txt;
+      t.classList.remove("hidden", "animate-toast");
+      void t.offsetWidth;
+      t.classList.add("animate-toast");
+      setTimeout(() => t.classList.add("hidden"), 2500);
+    }
+
+    window.onload = init;
+  </script>
+</body>
+</html>
