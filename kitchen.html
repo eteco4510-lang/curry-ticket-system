@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>厨房ディスプレイ (KDS)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Firebase SDK (Compat版 CDN) -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  <style>
+    * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+    html, body { height: 100vh; overflow: hidden; touch-action: manipulation; }
+    .card-fade-out {
+      transition: all 0.25s ease-out;
+      opacity: 0;
+      transform: scale(0.9) translateY(-20px);
+    }
+    ::-webkit-scrollbar { height: 10px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 5px; }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 flex flex-col font-sans select-none">
+
+  <!-- ヘッダー -->
+  <header class="bg-slate-900 border-b border-slate-800 px-4 h-14 flex items-center justify-between flex-shrink-0 z-20">
+    <div class="flex items-center gap-4">
+      <span class="text-sm bg-amber-500 text-slate-950 font-black px-3 py-1 rounded-md flex items-center gap-1.5">
+        <span>厨房</span>
+        <span class="w-2 h-2 rounded-full bg-emerald-400" id="db-status-dot" title="同期中"></span>
+      </span>
+      <div class="flex items-center gap-2">
+        <button onclick="changeSlot(-1)" class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-sm px-3">◀ 前</button>
+        <span class="text-2xl font-black font-mono tracking-wider text-amber-400" id="hdr-current-slot">11:00 の枠</span>
+        <button onclick="changeSlot(1)" class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-sm px-3">次 ▶</button>
+      </div>
+      <span class="text-sm font-bold text-slate-400" id="hdr-remain-info">未提供 0組 (計0食)</span>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <button onclick="undoLastComplete()" id="btn-undo" class="hidden text-sm bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold px-3.5 py-1.5 rounded-xl border border-slate-700 flex items-center gap-1.5 active:scale-95 transition">
+        <span>↩</span><span>直前の提供済を戻す</span>
+      </button>
+      <div class="text-lg font-mono text-slate-300 font-bold pl-2" id="clock">11:00</div>
+    </div>
+  </header>
+
+  <!-- 仕込み残数メーター -->
+  <section class="bg-slate-900/90 px-4 py-2.5 border-b border-slate-800 flex-shrink-0">
+    <div class="flex items-center justify-between mb-1.5">
+      <span class="text-xs font-bold text-slate-400 tracking-wider">■ この枠でいま作るべき残数（自動集計）</span>
+      <span class="text-xs text-emerald-400 font-bold flex items-center gap-1">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        全件提供で次枠へ自動遷移
+      </span>
+    </div>
+    
+    <div class="grid grid-cols-4 gap-3">
+      <div class="bg-slate-950 border-2 border-amber-600/50 rounded-2xl p-2.5 flex justify-between items-center shadow-md">
+        <div>
+          <span class="text-base font-black text-amber-400 block">チキン</span>
+          <span class="text-xs text-slate-400 font-bold mt-0.5 block" id="sum-chicken-sub">大盛:0 / 辛:0</span>
+        </div>
+        <div class="text-4xl font-black font-mono text-white tracking-tight"><span id="sum-chicken-count">0</span><span class="text-sm font-normal text-slate-400 ml-1">杯</span></div>
+      </div>
+
+      <div class="bg-slate-950 border-2 border-amber-600/50 rounded-2xl p-2.5 flex justify-between items-center shadow-md">
+        <div>
+          <span class="text-base font-black text-amber-400 block">ポーク</span>
+          <span class="text-xs text-slate-400 font-bold mt-0.5 block" id="sum-pork-sub">大盛:0 / 辛:0</span>
+        </div>
+        <div class="text-4xl font-black font-mono text-white tracking-tight"><span id="sum-pork-count">0</span><span class="text-sm font-normal text-slate-400 ml-1">杯</span></div>
+      </div>
+
+      <div class="bg-slate-950 border-2 border-amber-600/50 rounded-2xl p-2.5 flex justify-between items-center shadow-md">
+        <div>
+          <span class="text-base font-black text-amber-400 block" id="sum-special-name">限定</span>
+          <span class="text-xs text-slate-400 font-bold mt-0.5 block" id="sum-special-sub">大盛:0 / 辛:0</span>
+        </div>
+        <div class="text-4xl font-black font-mono text-white tracking-tight"><span id="sum-special-count">0</span><span class="text-sm font-normal text-slate-400 ml-1">杯</span></div>
+      </div>
+
+      <div class="bg-slate-950 border-2 border-slate-700 rounded-2xl p-2.5 flex flex-col justify-center shadow-md">
+        <div class="text-xs text-slate-400 flex justify-between font-bold mb-1">
+          <span>飯総数: <b class="text-white text-base" id="sum-rice-total">0</b></span>
+          <span class="text-amber-400">大盛計: <b class="text-base font-black" id="sum-rice-large">0</b></span>
+        </div>
+        <div class="text-xs text-emerald-300 font-black truncate" id="sum-toppings-text">追加なし</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 伝票カード表示領域 -->
+  <main class="flex-1 p-3.5 overflow-x-auto overflow-y-hidden">
+    <div id="cards-container" class="h-full flex gap-3.5 items-stretch"></div>
+  </main>
+
+  <!-- 遷移モーダル -->
+  <div id="slot-transition-banner" class="hidden fixed inset-0 z-50 bg-black/75 flex items-center justify-center pointer-events-none">
+    <div class="bg-slate-900 border-2 border-emerald-500 rounded-3xl p-8 text-center space-y-3 shadow-2xl">
+      <div class="text-emerald-400 text-5xl font-black">✓ 枠内完了</div>
+      <div class="text-2xl font-black text-white" id="trans-msg">11:00 の枠がすべて提供されました</div>
+      <div class="text-sm font-mono text-slate-400">次の時間枠へ自動移動します...</div>
+    </div>
+  </div>
+
+  <script>
+    // ===== Firebase 初期化 =====
+    const firebaseConfig = {
+      apiKey: "AIzaSyC1C4LIZpiiEA6PohPTC-XsI4ayfWgzBpo",
+      authDomain: "curry-ticket-system.firebaseapp.com",
+      projectId: "curry-ticket-system",
+      storageBucket: "curry-ticket-system.firebasestorage.app",
+      messagingSenderId: "295266310086",
+      appId: "1:295266310086:web:a86117b637fd7fb4a0c4c7",
+      measurementId: "G-QY5GDDWG5Y"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    const TIME_SLOTS = ["11:00", "11:30", "12:00", "12:30", "13:00", "13:30"];
+    let currentSlotIndex = 0;
+    let orders = [];
+    let completedHistory = [];
+
+    function init() {
+      updateClock();
+      setInterval(updateClock, 1000);
+
+      // Firestore リアルタイムリスナー（奥様画面の登録が即座にPUSH反映）
+      db.collection("orders").onSnapshot((snapshot) => {
+        orders = [];
+        snapshot.forEach((doc) => {
+          orders.push(doc.data());
+        });
+        orders.sort((a, b) => a.id - b.id);
+        renderDashboard();
+      }, (error) => {
+        console.error("Firestore同期エラー:", error);
+        document.getElementById("db-status-dot").className = "w-2 h-2 rounded-full bg-rose-500";
+      });
+    }
+
+    function updateClock() {
+      const now = new Date();
+      document.getElementById("clock").innerText = now.toTimeString().substring(0, 5);
+    }
+
+    function changeSlot(dir) {
+      const nextIdx = currentSlotIndex + dir;
+      if (nextIdx >= 0 && nextIdx < TIME_SLOTS.length) {
+        currentSlotIndex = nextIdx;
+        renderDashboard();
+      }
+    }
+
+    // 提供完了（Firestoreへステータス「済」を反映）
+    function completeOrder(orderId, cardElement) {
+      cardElement.classList.add("card-fade-out");
+
+      setTimeout(() => {
+        db.collection("orders").doc(String(orderId)).update({ status: "済" })
+          .then(() => {
+            completedHistory.push(orderId);
+            document.getElementById("btn-undo").classList.remove("hidden");
+
+            const curSlot = TIME_SLOTS[currentSlotIndex];
+            const remainingInSlot = orders.filter(o => o.slot === curSlot && o.status === "未" && o.id !== orderId);
+
+            if (remainingInSlot.length === 0) {
+              triggerAutoAdvance(curSlot);
+            }
+          })
+          .catch(err => alert("通信エラー: " + err.message));
+      }, 220);
+    }
+
+    // 直前の提供済を戻す（Firestoreへステータス「未」を反映）
+    function undoLastComplete() {
+      if (completedHistory.length === 0) return;
+      const lastId = completedHistory.pop();
+      db.collection("orders").doc(String(lastId)).update({ status: "未" })
+        .then(() => {
+          const order = orders.find(o => o.id === lastId);
+          if (order) {
+            const slotIdx = TIME_SLOTS.indexOf(order.slot);
+            if (slotIdx > -1) currentSlotIndex = slotIdx;
+          }
+          if (completedHistory.length === 0) {
+            document.getElementById("btn-undo").classList.add("hidden");
+          }
+        })
+        .catch(err => alert("復元エラー: " + err.message));
+    }
+
+    function triggerAutoAdvance(completedSlot) {
+      const banner = document.getElementById("slot-transition-banner");
+      document.getElementById("trans-msg").innerText = `${completedSlot} の枠がすべて提供されました`;
+      banner.classList.remove("hidden");
+
+      setTimeout(() => {
+        banner.classList.add("hidden");
+        if (currentSlotIndex < TIME_SLOTS.length - 1) {
+          currentSlotIndex++;
+          renderDashboard();
+        }
+      }, 1200);
+    }
+
+    function renderDashboard() {
+      const curSlot = TIME_SLOTS[currentSlotIndex];
+      document.getElementById("hdr-current-slot").innerText = `${curSlot} の枠`;
+
+      const currentOrders = orders.filter(o => o.slot === curSlot && o.status === "未");
+      const totalDishes = currentOrders.reduce((sum, o) => sum + o.dishes.length, 0);
+      document.getElementById("hdr-remain-info").innerText = `未提供 ${currentOrders.length}組 (計${totalDishes}食)`;
+
+      updatePrepMeter(currentOrders);
+
+      const container = document.getElementById("cards-container");
+      container.innerHTML = "";
+
+      if (currentOrders.length === 0) {
+        container.innerHTML = `
+          <div class="w-full flex flex-col items-center justify-center text-slate-500 space-y-3">
+            <span class="text-6xl font-black text-slate-700">✓</span>
+            <span class="text-2xl font-bold text-slate-400">${curSlot} の枠はすべて提供済みです</span>
+            <span class="text-sm text-slate-600">右上の「次 ▶」を押すと次の枠を先読みできます</span>
+          </div>
+        `;
+        return;
+      }
+
+      currentOrders.forEach((order) => {
+        const card = document.createElement("div");
+        card.id = `kitchen-card-${order.id}`;
+        card.className = "w-80 bg-slate-900 border-2 border-slate-700 rounded-3xl flex flex-col justify-between shadow-2xl flex-shrink-0 overflow-hidden";
+
+        const numStr = String(order.id).padStart(3, '0');
+        const hasDinein = order.dishes.some(d => d.type === "店内");
+        const hasTakeout = order.dishes.some(d => d.type === "持ち帰り");
+
+        let typeBadgeHtml = "";
+        if (hasDinein && hasTakeout) {
+          typeBadgeHtml = `<span class="bg-amber-600 text-white font-black text-xs px-2.5 py-1 rounded-md shadow">店内+持帰</span>`;
+        } else if (hasTakeout) {
+          typeBadgeHtml = `<span class="bg-indigo-600 text-white font-black text-xs px-2.5 py-1 rounded-md shadow">持帰パック</span>`;
+        } else {
+          typeBadgeHtml = `<span class="bg-amber-500 text-slate-950 font-black text-xs px-2.5 py-1 rounded-md shadow">店内飲食</span>`;
+        }
+
+        const dishListHtml = order.dishes.map((d, dIdx) => {
+          const additions = [...d.toppings, ...d.drinks];
+          const isLarge = d.rice === "大盛";
+
+          let spicyBadgeHtml = "";
+          if (d.spicy === "大辛") {
+            spicyBadgeHtml = `<span class="bg-rose-600 text-white font-black text-sm px-2.5 py-0.5 rounded-md border border-rose-400 shadow-sm animate-pulse">大辛 🔥🔥</span>`;
+          } else if (d.spicy === "辛口") {
+            spicyBadgeHtml = `<span class="bg-amber-500/20 text-amber-300 font-black text-sm px-2 py-0.5 rounded-md border border-amber-500">辛口 🌶️</span>`;
+          } else {
+            spicyBadgeHtml = `<span class="text-slate-400 font-bold text-xs bg-slate-800 px-2 py-0.5 rounded border border-slate-700">辛さ: ふつう</span>`;
+          }
+
+          return `
+            <div class="bg-slate-950 p-3 rounded-2xl border border-slate-800 space-y-2">
+              <div class="flex justify-between items-center">
+                <span class="text-xl font-black text-amber-400 tracking-wide">${order.dishes.length > 1 ? (dIdx+1) + '. ' : ''}${d.curry}</span>
+                <span class="text-xs font-bold px-2 py-0.5 rounded ${d.type === '持ち帰り' ? 'bg-indigo-950 text-indigo-300 border border-indigo-800' : 'bg-slate-800 text-slate-400'}">${d.type}</span>
+              </div>
+              <div class="flex items-center gap-2 pt-0.5">
+                <span class="font-bold text-xs ${isLarge ? 'text-amber-300 font-black text-sm bg-amber-950/60 px-2 py-0.5 rounded border border-amber-600' : 'text-slate-300 bg-slate-800 px-2 py-0.5 rounded'}">
+                  飯: ${d.rice}
+                </span>
+                ${spicyBadgeHtml}
+              </div>
+              ${additions.length ? `
+                <div class="text-xs font-black text-emerald-300 bg-emerald-950/50 px-2 py-1 rounded-lg border border-emerald-800/80">
+                  + ${additions.join(' / ')}
+                </div>
+              ` : ''}
+            </div>
+          `;
+        }).join('');
+
+        card.innerHTML = `
+          <div class="p-3.5 bg-slate-800/90 border-b border-slate-700 flex justify-between items-center">
+            <div>
+              <div class="flex items-center gap-2.5">
+                <span class="text-3xl font-black font-mono text-white tracking-wider">${numStr}</span>
+                ${order.name ? `<span class="text-base font-black text-sky-300 bg-sky-950 border border-sky-800 px-2.5 py-0.5 rounded-lg truncate max-w-[130px]">${order.name} 様</span>` : ''}
+              </div>
+              <div class="text-xs font-mono text-slate-400 mt-0.5 font-bold">${order.dishes.length}食受付 / ${order.slot}</div>
+            </div>
+            ${typeBadgeHtml}
+          </div>
+
+          <div class="p-3 space-y-2.5 overflow-y-auto flex-1">
+            ${dishListHtml}
+          </div>
+
+          <div class="p-3 bg-slate-800/90 border-t border-slate-700">
+            <button onclick="completeOrder(${order.id}, document.getElementById('kitchen-card-${order.id}'))" class="w-full h-14 bg-emerald-600 hover:bg-emerald-500 active:scale-95 transition text-white font-black text-lg rounded-2xl shadow-xl flex items-center justify-center gap-2">
+              <span class="text-xl">✓</span><span>提供完了</span>
+            </button>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    function updatePrepMeter(ordersList) {
+      let chicken = 0, pork = 0, special = 0;
+      let cLarge = 0, pLarge = 0, sLarge = 0;
+      let cHot = 0, cVhot = 0;
+      let pHot = 0, pVhot = 0;
+      let sHot = 0, sVhot = 0;
+      let totalRice = 0, largeRice = 0;
+      const toppingsCount = {};
+
+      ordersList.forEach(o => {
+        o.dishes.forEach(d => {
+          totalRice++;
+          if (d.rice === "大盛") {
+            largeRice++;
+            if (d.curry === "チキン") cLarge++;
+            if (d.curry === "ポーク") pLarge++;
+            if (d.curry === "限定") sLarge++;
+          }
+          if (d.curry === "チキン") {
+            chicken++;
+            if (d.spicy === "辛口") cHot++;
+            if (d.spicy === "大辛") cVhot++;
+          } else if (d.curry === "ポーク") {
+            pork++;
+            if (d.spicy === "辛口") pHot++;
+            if (d.spicy === "大辛") pVhot++;
+          } else if (d.curry === "限定") {
+            special++;
+            if (d.spicy === "辛口") sHot++;
+            if (d.spicy === "大辛") sVhot++;
+          }
+          d.toppings.forEach(t => toppingsCount[t] = (toppingsCount[t] || 0) + 1);
+          d.drinks.forEach(dr => toppingsCount[dr] = (toppingsCount[dr] || 0) + 1);
+        });
+      });
+
+      document.getElementById("sum-chicken-count").innerText = chicken;
+      document.getElementById("sum-chicken-sub").innerHTML = `大盛:${cLarge} / <span class="text-amber-300">辛:${cHot}</span> <span class="text-rose-400">大辛:${cVhot}</span>`;
+      document.getElementById("sum-pork-count").innerText = pork;
+      document.getElementById("sum-pork-sub").innerHTML = `大盛:${pLarge} / <span class="text-amber-300">辛:${pHot}</span> <span class="text-rose-400">大辛:${pVhot}</span>`;
+      document.getElementById("sum-special-count").innerText = special;
+      document.getElementById("sum-special-sub").innerHTML = `大盛:${sLarge} / <span class="text-amber-300">辛:${sHot}</span> <span class="text-rose-400">大辛:${sVhot}</span>`;
+      document.getElementById("sum-rice-total").innerText = `${totalRice}杯`;
+      document.getElementById("sum-rice-large").innerText = `${largeRice}杯`;
+      const topStr = Object.keys(toppingsCount).map(k => `${k}:${toppingsCount[k]}`).join(' / ');
+      document.getElementById("sum-toppings-text").innerText = topStr || "追加トッピングなし";
+    }
+
+    init();
+  </script>
+</body>
+</html>
